@@ -14,9 +14,11 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",
-    "supabase": "supabase"
+    "supabase": "supabase",
+    "verify:rls": "node supabase/scripts/verify-rls-profiles.mjs"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
     "@typescript-eslint/parser": "^8.12.2",
     "eslint": "^9.13.0",

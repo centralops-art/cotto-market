@@ -179,11 +179,15 @@ create trigger guard_review_not_self before insert or update on public.reviews
 -- portable to the hosted project instead of relying on a local-only CLI flag.
 -- ---------------------------------------------------------------------------
 
-grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on all tables in schema public to anon, authenticated;
-grant execute on all functions in schema public to anon, authenticated;
-alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated;
-alter default privileges in schema public grant execute on functions to anon, authenticated;
+-- service_role has BYPASSRLS (skips policy checks) but is still an ordinary
+-- Postgres role for GRANT purposes -- it needs the same explicit table-level
+-- privileges, or every service-role query (admin app backend, edge functions,
+-- cron jobs) fails with "permission denied" despite RLS being irrelevant to it.
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated, service_role;
+grant execute on all functions in schema public to anon, authenticated, service_role;
+alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Enable RLS everywhere.
