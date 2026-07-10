@@ -27,7 +27,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   async function loadProfile(userId: string) {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    // maybeSingle, not single: right after signup the handle_new_user trigger's
+    // row may not have landed yet (and .single() throws on 0 rows, not just >1).
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
     setProfile(data ?? null);
   }
 

@@ -38,8 +38,9 @@ export default function Home() {
         .select("id")
         .eq("is_active", true)
         .limit(1)
-        .single();
+        .maybeSingle();
       if (regionError) throw regionError;
+      if (!region) throw new Error("No active region is configured yet.");
 
       const storefrontName = `${profile?.full_name ?? "New"}'s Kitchen`;
       const { error } = await supabase.from("vendors").insert({
