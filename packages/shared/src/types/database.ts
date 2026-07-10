@@ -1037,6 +1037,7 @@ export type Database = {
           address_line1: string | null
           cfpm_cert_expires_on: string | null
           cfpm_cert_url: string | null
+          cfpm_expiry_warned_at: string | null
           city: string | null
           cottage_food_acknowledged_at: string | null
           created_at: string
@@ -1074,6 +1075,7 @@ export type Database = {
           address_line1?: string | null
           cfpm_cert_expires_on?: string | null
           cfpm_cert_url?: string | null
+          cfpm_expiry_warned_at?: string | null
           city?: string | null
           cottage_food_acknowledged_at?: string | null
           created_at?: string
@@ -1111,6 +1113,7 @@ export type Database = {
           address_line1?: string | null
           cfpm_cert_expires_on?: string | null
           cfpm_cert_url?: string | null
+          cfpm_expiry_warned_at?: string | null
           city?: string | null
           cottage_food_acknowledged_at?: string | null
           created_at?: string
@@ -1271,7 +1274,12 @@ export type Database = {
         | "ebike"
         | "scooter"
         | "on_foot"
-      vendor_status: "pending_review" | "active" | "suspended" | "unpublished"
+      vendor_status:
+        | "pending_review"
+        | "active"
+        | "suspended"
+        | "unpublished"
+        | "draft"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1462,7 +1470,13 @@ export const Constants = {
         "scooter",
         "on_foot",
       ],
-      vendor_status: ["pending_review", "active", "suspended", "unpublished"],
+      vendor_status: [
+        "pending_review",
+        "active",
+        "suspended",
+        "unpublished",
+        "draft",
+      ],
     },
   },
 } as const
