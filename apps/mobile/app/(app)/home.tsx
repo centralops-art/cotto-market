@@ -33,6 +33,10 @@ export default function Home() {
 
   const becomeVendor = useMutation({
     mutationFn: async () => {
+      if (!profile) {
+        throw new Error("Your profile hasn't finished loading yet -- try signing out and back in.");
+      }
+
       const { data: region, error: regionError } = await supabase
         .from("regions")
         .select("id")
@@ -65,6 +69,10 @@ export default function Home() {
 
       {vendorQuery.isLoading ? (
         <ActivityIndicator color="#D96A3E" />
+      ) : !profile ? (
+        <Text className="text-red-400">
+          We couldn't load your profile. Try signing out and back in.
+        </Text>
       ) : vendorQuery.data ? (
         vendorQuery.data.status === "pending_review" ? (
           <Text className="text-white/80">Application pending review.</Text>
