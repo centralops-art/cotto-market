@@ -34,7 +34,7 @@ function RootNavigation() {
     }
 
     if (!inAppGroup) {
-      router.replace("/(app)/home");
+      router.replace("/(app)/(tabs)");
     }
   }, [session, profile, loading, segments, router, isPasswordRecovery]);
 

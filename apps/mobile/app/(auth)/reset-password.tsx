@@ -56,7 +56,7 @@ export default function ResetPassword() {
     }
     setDone(true);
     clearPasswordRecovery();
-    router.replace("/(app)/home");
+    router.replace("/(app)/(tabs)");
   }
 
   if (done) {

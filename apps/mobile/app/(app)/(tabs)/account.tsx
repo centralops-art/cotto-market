@@ -1,8 +1,9 @@
+import { ALLERGENS, ALLERGEN_LABELS, type Allergen } from "@cotto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Text, View, Pressable, ActivityIndicator } from "react-native";
-import { supabase } from "../../src/lib/supabase";
-import { useAuth } from "../../src/lib/auth-context";
+import { Text, View, Pressable, ActivityIndicator, ScrollView } from "react-native";
+import { supabase } from "../../../src/lib/supabase";
+import { useAuth } from "../../../src/lib/auth-context";
 
 function slugify(input: string) {
   return (
@@ -14,8 +15,8 @@ function slugify(input: string) {
   );
 }
 
-export default function Home() {
-  const { session, profile } = useAuth();
+export default function Account() {
+  const { session, profile, refreshProfile } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -65,14 +66,26 @@ export default function Home() {
     },
   });
 
+  const toggleAllergen = useMutation({
+    mutationFn: async (allergen: Allergen) => {
+      if (!profile) return;
+      const current = profile.allergen_preferences ?? [];
+      const next = current.includes(allergen) ? current.filter((a) => a !== allergen) : [...current, allergen];
+      const { error } = await supabase.from("profiles").update({ allergen_preferences: next }).eq("id", profile.id);
+      if (error) throw error;
+    },
+    onSuccess: refreshProfile,
+  });
+
   async function signOut() {
     await supabase.auth.signOut();
   }
 
   const vendor = vendorQuery.data;
+  const myAllergens = profile?.allergen_preferences ?? [];
 
   return (
-    <View className="flex-1 justify-center gap-4 bg-cotto-dark px-6">
+    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 48, gap: 16 }}>
       <Text className="text-3xl font-bold text-cotto-accent">Cotto</Text>
       <Text className="text-white">Welcome, {profile?.full_name ?? "there"}.</Text>
 
@@ -119,9 +132,32 @@ export default function Home() {
       )}
       {becomeVendor.isError && <Text className="text-red-400">{(becomeVendor.error as Error).message}</Text>}
 
+      <View className="mt-6 gap-2">
+        <Text className="text-lg font-semibold text-white">Allergens to avoid</Text>
+        <Text className="text-sm text-white/60">
+          Menu items containing these will be hidden from your Browse tab.
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          {ALLERGENS.map((allergen) => {
+            const selected = myAllergens.includes(allergen);
+            return (
+              <Pressable
+                key={allergen}
+                onPress={() => toggleAllergen.mutate(allergen)}
+                className={`rounded-full border px-3 py-1.5 ${
+                  selected ? "border-cotto-accent bg-cotto-accent/20" : "border-white/20"
+                }`}
+              >
+                <Text className={selected ? "text-cotto-accent" : "text-white/70"}>{ALLERGEN_LABELS[allergen]}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       <Pressable className="mt-8 items-center py-3" onPress={signOut}>
         <Text className="text-white/60">Sign out</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
