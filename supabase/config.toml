@@ -156,11 +156,15 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "https://admin.cottomarket.com"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
+# NOTE: `supabase config push` syncs this whole file to the HOSTED project, so
+# both local-dev and hosted redirect targets need to coexist here.
 additional_redirect_urls = [
+  "https://admin.cottomarket.com",
+  "https://admin.cottomarket.com/auth/callback",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3000/auth/callback",
   "http://localhost:3000",
@@ -239,15 +243,18 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Use a production-ready SMTP server -- routes Auth emails (magic links,
+# signup confirmations) through Resend instead of Supabase's low-volume
+# default sender, which has a strict per-hour rate limit unsuitable for
+# anything beyond the lightest testing.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "CentralOps@CottoMarket.com"
+sender_name = "Cotto"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
