@@ -95,7 +95,14 @@ export default function Home() {
         ) : vendor.status === "suspended" ? (
           <Text className="text-red-400">Your vendor account is suspended.</Text>
         ) : (
-          <Text className="text-white/80">Vendor dashboard coming in Phase 3.</Text>
+          <Pressable
+            className="items-center rounded-lg bg-cotto-accent py-3"
+            onPress={() => router.push("/(app)/vendor")}
+          >
+            <Text className="font-semibold text-white">
+              {vendor.status === "active" ? "Manage Storefront" : "Build Your Storefront"}
+            </Text>
+          </Pressable>
         )
       ) : (
         <Pressable
