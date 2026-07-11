@@ -10,7 +10,6 @@
     "newArchEnabled": true,
     "plugins": [
       "expo-router",
-      "@react-native-community/datetimepicker",
       "expo-web-browser",
       [
         "expo-image-picker",

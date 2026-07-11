@@ -1,7 +1,6 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
-import { ActivityIndicator, Image, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
 import { supabase } from "../../lib/supabase";
 
 interface Props {
@@ -12,15 +11,12 @@ interface Props {
   onBack: () => void;
 }
 
-function formatDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export function CfpmCertStep({ userId, defaultCertUrl, defaultExpiresOn, onNext, onBack }: Props) {
   const [certPath, setCertPath] = useState<string | null>(defaultCertUrl);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [expiresOn, setExpiresOn] = useState<Date>(defaultExpiresOn ? new Date(defaultExpiresOn) : new Date());
-  const [showPicker, setShowPicker] = useState(false);
+  const [expiresOn, setExpiresOn] = useState(defaultExpiresOn ?? "");
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -63,10 +59,18 @@ export function CfpmCertStep({ userId, defaultCertUrl, defaultExpiresOn, onNext,
       setFormError("Upload your CFPM certificate first.");
       return;
     }
+    if (!DATE_PATTERN.test(expiresOn)) {
+      setFormError("Enter the expiration date as YYYY-MM-DD.");
+      return;
+    }
+    if (new Date(expiresOn) < new Date(new Date().toDateString())) {
+      setFormError("Expiration date can't be in the past.");
+      return;
+    }
     setSubmitting(true);
     setFormError(null);
     try {
-      await onNext({ cfpmCertUrl: certPath, cfpmCertExpiresOn: formatDate(expiresOn) });
+      await onNext({ cfpmCertUrl: certPath, cfpmCertExpiresOn: expiresOn });
     } catch (err) {
       setFormError((err as Error).message);
     } finally {
@@ -97,21 +101,15 @@ export function CfpmCertStep({ userId, defaultCertUrl, defaultExpiresOn, onNext,
       </Pressable>
 
       <Text className="text-white/80">Expiration date</Text>
-      <Pressable className="rounded-lg bg-white/10 px-4 py-3" onPress={() => setShowPicker(true)}>
-        <Text className="text-white">{formatDate(expiresOn)}</Text>
-      </Pressable>
-      {showPicker && (
-        <DateTimePicker
-          value={expiresOn}
-          mode="date"
-          minimumDate={new Date()}
-          display={Platform.OS === "ios" ? "inline" : "default"}
-          onChange={(_event, date) => {
-            setShowPicker(Platform.OS === "ios");
-            if (date) setExpiresOn(date);
-          }}
-        />
-      )}
+      <TextInput
+        className="rounded-lg bg-white/10 px-4 py-3 text-white"
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor="#9CA3AF"
+        keyboardType="numbers-and-punctuation"
+        maxLength={10}
+        value={expiresOn}
+        onChangeText={setExpiresOn}
+      />
 
       {formError && <Text className="text-red-400">{formError}</Text>}
 
