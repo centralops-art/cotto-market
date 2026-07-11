@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
@@ -7,6 +8,7 @@ import { useAuth } from "../../../src/lib/auth-context";
 export default function Favorites() {
   const { profile } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const favoriteVendorsQuery = useQuery({
     queryKey: ["favorite_vendors_list", profile?.id],
@@ -35,6 +37,16 @@ export default function Favorites() {
       return data;
     },
   });
+
+  // Tab screens stay mounted in the background (they aren't remounted on
+  // switch), so without this, favorites added elsewhere while this tab sits
+  // idle would never appear until an unrelated cache eviction.
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ["favorite_vendors_list", profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ["favorite_items_list", profile?.id] });
+    }, [queryClient, profile?.id])
+  );
 
   const isLoading = favoriteVendorsQuery.isLoading || favoriteItemsQuery.isLoading;
   const vendors = favoriteVendorsQuery.data?.map((f) => f.vendor).filter((v) => !!v) ?? [];
