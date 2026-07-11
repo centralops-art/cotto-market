@@ -155,7 +155,7 @@ export default function MenuBuilder() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 56, gap: 16 }}>
+    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 96, gap: 16 }}>
       <Pressable onPress={() => router.back()}>
         <Text className="text-white/60">&larr; Back</Text>
       </Pressable>

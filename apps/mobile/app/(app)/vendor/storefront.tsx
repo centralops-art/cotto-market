@@ -21,7 +21,7 @@ export default function StorefrontEditor() {
 
   return (
     <KeyboardAvoidingView className="flex-1 bg-cotto-dark" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, gap: 24 }}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 96, gap: 24 }}>
         <Pressable onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
