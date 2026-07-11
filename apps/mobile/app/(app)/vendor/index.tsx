@@ -33,8 +33,8 @@ export default function VendorDashboard() {
 
   return (
     <View className="flex-1 gap-4 bg-cotto-dark px-6 pt-16">
-      <Pressable onPress={() => router.replace("/(app)/home")}>
-        <Text className="text-white/60">&larr; Back to home</Text>
+      <Pressable onPress={() => router.replace("/(app)/(tabs)/account")}>
+        <Text className="text-white/60">&larr; Back to account</Text>
       </Pressable>
       <Text className="text-2xl font-bold text-white">{vendor.storefront_name}</Text>
 

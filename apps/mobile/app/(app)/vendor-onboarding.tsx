@@ -39,7 +39,7 @@ export default function VendorOnboarding() {
   useEffect(() => {
     // Nothing left to do here once submitted (or if there's somehow no vendor yet).
     if (vendorQuery.isSuccess && (!vendor || vendor.status !== "draft")) {
-      router.replace("/(app)/home");
+      router.replace("/(app)/(tabs)/account");
     }
   }, [vendorQuery.isSuccess, vendor, router]);
 
@@ -146,7 +146,7 @@ export default function VendorOnboarding() {
               // Best-effort -- the application is already submitted regardless
               // of whether the admin notification email succeeds.
               await supabase.functions.invoke("notify-vendor-submitted", { body: { vendorId: vendor.id } }).catch(() => {});
-              router.replace("/(app)/home");
+              router.replace("/(app)/(tabs)/account");
             }}
           />
         )}
