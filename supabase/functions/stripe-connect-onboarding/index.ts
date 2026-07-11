@@ -63,7 +63,13 @@ Deno.serve(async (req) => {
         email: vendor.email ?? undefined,
         business_profile: { name: vendor.storefront_name },
         // Same Connect account is used for both cooking revenue and delivery
-        // payouts (spec 3.1) -- separate Transfers, not destination charges.
+        // payouts (spec 3.1) -- separate Transfers, not destination charges,
+        // so the connected account only ever RECEIVES transfers and never
+        // processes a card charge itself. `card_payments` is requested
+        // anyway: Stripe requires platform approval to request `transfers`
+        // WITHOUT `card_payments` (confirmed via a direct API test), so
+        // omitting it just trades one manual Stripe approval step for
+        // another with no benefit -- the capability sits unused either way.
         capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
       });
       accountId = account.id;
@@ -77,11 +83,17 @@ Deno.serve(async (req) => {
       if (updateError) throw updateError;
     }
 
-    const appUrl = Deno.env.get("APP_SCHEME_URL") ?? "cotto://vendor-onboarding";
+    // Stripe requires refresh_url/return_url to be https:// -- a custom app
+    // scheme like cotto:// is rejected outright ("Not a valid URL"). Until
+    // there's a real deployed domain with universal-link config to bounce
+    // straight back into the app, this is just a placeholder page; the
+    // mobile app's "I've finished -- check status" button (not automatic
+    // redirect detection) is the real completion path either way.
+    const returnUrlBase = Deno.env.get("STRIPE_CONNECT_RETURN_URL") ?? "https://cottomarket.com/stripe-connect-return";
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: appUrl,
-      return_url: `${appUrl}?stripe_return=1`,
+      refresh_url: returnUrlBase,
+      return_url: `${returnUrlBase}?vendor_id=${vendorId}`,
       type: "account_onboarding",
     });
 
