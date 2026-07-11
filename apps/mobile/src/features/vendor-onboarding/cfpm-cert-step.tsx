@@ -1,5 +1,5 @@
 import { decode } from "base64-arraybuffer";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
