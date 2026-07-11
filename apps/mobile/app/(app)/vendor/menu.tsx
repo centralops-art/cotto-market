@@ -38,7 +38,10 @@ export default function MenuBuilder() {
   });
 
   const itemsQuery = useQuery({
-    queryKey: ["menu_items", vendorId],
+    // "all" (editor sees hidden items too) vs. preview.tsx's "published"
+    // (customer-facing, is_available only) -- must stay distinct, or
+    // React Query's shared cache serves one screen's result to the other.
+    queryKey: ["menu_items", vendorId, "all"],
     enabled: !!vendorId,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -56,7 +59,7 @@ export default function MenuBuilder() {
     await queryClient.invalidateQueries({ queryKey: ["menu_categories", vendorId] });
   }
   async function refreshItems() {
-    await queryClient.invalidateQueries({ queryKey: ["menu_items", vendorId] });
+    await queryClient.invalidateQueries({ queryKey: ["menu_items", vendorId, "all"] });
   }
 
   async function addCategory() {

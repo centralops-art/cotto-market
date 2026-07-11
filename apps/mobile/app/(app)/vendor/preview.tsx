@@ -21,7 +21,9 @@ export default function StorefrontPreview() {
   });
 
   const itemsQuery = useQuery({
-    queryKey: ["menu_items", vendorId],
+    // "published" (is_available only) vs. menu.tsx's "all" (editor sees
+    // hidden items too) -- must stay distinct, see comment there.
+    queryKey: ["menu_items", vendorId, "published"],
     enabled: !!vendorId,
     queryFn: async () => {
       const { data, error } = await supabase
