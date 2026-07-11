@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { Text, View, Pressable, ActivityIndicator } from "react-native";
 import { supabase } from "../../src/lib/supabase";
 import { useAuth } from "../../src/lib/auth-context";
@@ -16,6 +17,7 @@ function slugify(input: string) {
 export default function Home() {
   const { session, profile } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const vendorQuery = useQuery({
     queryKey: ["vendor", session?.user.id],
@@ -46,7 +48,9 @@ export default function Home() {
       if (regionError) throw regionError;
       if (!region) throw new Error("No active region is configured yet.");
 
-      const storefrontName = `${profile?.full_name ?? "New"}'s Kitchen`;
+      // Starts as 'draft' (table default) -- the onboarding wizard fills in
+      // the rest and self-submits to 'pending_review' when complete.
+      const storefrontName = `${profile.full_name}'s Kitchen`;
       const { error } = await supabase.from("vendors").insert({
         owner_profile_id: session!.user.id,
         region_id: region.id,
@@ -55,12 +59,17 @@ export default function Home() {
       });
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vendor", session?.user.id] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["vendor", session?.user.id] });
+      router.push("/(app)/vendor-onboarding");
+    },
   });
 
   async function signOut() {
     await supabase.auth.signOut();
   }
+
+  const vendor = vendorQuery.data;
 
   return (
     <View className="flex-1 justify-center gap-4 bg-cotto-dark px-6">
@@ -73,10 +82,17 @@ export default function Home() {
         <Text className="text-red-400">
           We couldn't load your profile. Try signing out and back in.
         </Text>
-      ) : vendorQuery.data ? (
-        vendorQuery.data.status === "pending_review" ? (
+      ) : vendor ? (
+        vendor.status === "draft" ? (
+          <Pressable
+            className="items-center rounded-lg bg-cotto-accent py-3"
+            onPress={() => router.push("/(app)/vendor-onboarding")}
+          >
+            <Text className="font-semibold text-white">Continue Application</Text>
+          </Pressable>
+        ) : vendor.status === "pending_review" ? (
           <Text className="text-white/80">Application pending review.</Text>
-        ) : vendorQuery.data.status === "suspended" ? (
+        ) : vendor.status === "suspended" ? (
           <Text className="text-red-400">Your vendor account is suspended.</Text>
         ) : (
           <Text className="text-white/80">Vendor dashboard coming in Phase 3.</Text>

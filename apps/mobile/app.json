@@ -9,7 +9,14 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cotto needs access to your photos to upload your CFPM certificate."
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,

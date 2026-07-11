@@ -64,6 +64,35 @@ pnpm db:reset               # reset local Supabase DB + reapply migrations/seed
 pnpm db:diff                # generate a migration from local schema changes
 ```
 
+## Edge functions & the daily CFPM expiry cron
+
+Edge functions read secrets from `supabase/.env` locally (`pnpm exec supabase
+functions serve --env-file supabase/.env`) and from `supabase secrets set
+KEY=value` on the hosted project -- neither is the same as the Next.js/Expo
+`.env` files, which only cover the two apps.
+
+The CFPM expiry cron (`cron-cfpm-expiry-check`) is scheduled via `pg_cron` +
+`pg_net`, reading the project URL and service role key from Supabase Vault by
+name so neither is hardcoded in a migration. **One-time setup per
+environment:**
+
+```sql
+-- Local: run against 127.0.0.1:54322. Note the INTERNAL hostname (kong:8000),
+-- not the host-mapped 127.0.0.1:54321 -- pg_net calls originate from inside
+-- the postgres container, where 127.0.0.1 means the container itself.
+select vault.create_secret('http://kong:8000', 'project_url');
+select vault.create_secret('<local service_role_key from supabase start>', 'service_role_key');
+
+-- Hosted: run via `supabase db query --linked "<sql>"`, using the real
+-- project URL and its actual service role key from the dashboard.
+select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
+select vault.create_secret('<hosted service_role_key>', 'service_role_key');
+```
+
+`pnpm db:reset` wipes local Vault secrets (they're runtime data, not part of
+migrations) -- re-run the two `local` statements above after every reset if
+you need to test the cron locally.
+
 ## Deploys
 
 - **Admin (Vercel)**: import this repo in the Vercel dashboard with **Root
