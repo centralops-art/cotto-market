@@ -1,3 +1,5 @@
+import { decode } from "base64-arraybuffer";
+import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
@@ -37,13 +39,18 @@ export function CfpmCertStep({ userId, defaultCertUrl, defaultExpiresOn, onNext,
     const asset = result.assets[0];
     setUploading(true);
     try {
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
+      // React Native's Blob shim can't handle the ArrayBuffer path that
+      // fetch(uri).blob() produces ("Creating blobs from 'ArrayBuffer' and
+      // 'ArrayBufferView' are not supported"). Read as base64 and hand
+      // Supabase Storage a plain ArrayBuffer instead -- the standard
+      // Expo + Supabase Storage upload pattern.
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: "base64" });
+      const arrayBuffer = decode(base64);
       const ext = asset.uri.split(".").pop() ?? "jpg";
       const path = `${userId}/cfpm-cert-${Date.now()}.${ext}`;
       const { error } = await supabase.storage
         .from("cfpm-certs")
-        .upload(path, blob, { contentType: asset.mimeType ?? "image/jpeg", upsert: true });
+        .upload(path, arrayBuffer, { contentType: asset.mimeType ?? "image/jpeg", upsert: true });
       if (error) throw error;
       setCertPath(path);
       setPreviewUri(asset.uri);
