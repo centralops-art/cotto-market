@@ -6,6 +6,32 @@ export interface RegionFeeConfig {
   deliveryPayoutSplitPct: number;
 }
 
+const METERS_PER_MILE = 1609.344;
+
+/**
+ * Converts a one-way Mapbox Directions distance (meters, cooking_vendor -> customer)
+ * into the round-trip miles the delivery fee is priced on.
+ */
+export function metersToRoundTripMiles(oneWayDistanceMeters: number): number {
+  if (oneWayDistanceMeters < 0) {
+    throw new Error(`oneWayDistanceMeters must be >= 0, got ${oneWayDistanceMeters}`);
+  }
+  return (2 * oneWayDistanceMeters) / METERS_PER_MILE;
+}
+
+/**
+ * Subtotal for a single vendor's suborder: sum of unit_price_cents * quantity.
+ */
+export function calculateSubtotalCents(lines: { unitPriceCents: Cents; quantity: number }[]): Cents {
+  return lines.reduce((sum, line) => {
+    assertIsCents(line.unitPriceCents, "unitPriceCents");
+    if (!Number.isInteger(line.quantity) || line.quantity <= 0) {
+      throw new Error(`quantity must be a positive integer, got ${line.quantity}`);
+    }
+    return sum + line.unitPriceCents * line.quantity;
+  }, 0);
+}
+
 /**
  * Delivery fee = base + (round-trip miles * per-mile fee), rounded to the nearest cent.
  * Snapshotted onto the suborder at checkout time.
