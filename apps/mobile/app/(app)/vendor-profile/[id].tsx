@@ -9,6 +9,7 @@ import {
 } from "@cotto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
@@ -24,11 +25,14 @@ const DAY_LABELS: Record<string, string> = {
 };
 
 export default function VendorProfile() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, q } = useLocalSearchParams<{ id: string; q?: string }>();
   const router = useRouter();
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   const excludedAllergens = profile?.allergen_preferences ?? [];
+  const [showFullMenu, setShowFullMenu] = useState(false);
+  const searchTerm = (q ?? "").trim().toLowerCase();
+  const searchWords = searchTerm.split(/\s+/).filter(Boolean);
 
   const vendorQuery = useQuery({
     queryKey: ["vendor_profile", id],
@@ -129,6 +133,19 @@ export default function VendorProfile() {
     (item) => !(item.allergens as Allergen[]).some((a) => excludedAllergens.includes(a))
   );
 
+  // Scope to whatever matched the search that brought the customer here, so
+  // tapping "basil" in Browse lands them on the dish instead of a full menu
+  // they have to hunt through. Falls back to the full menu when the search
+  // only matched the vendor's own name/tagline (no items to narrow to).
+  const searchMatchedItems = searchWords.length
+    ? visibleItems.filter((item) => {
+        const haystack = `${item.name} ${item.ingredients ?? ""}`.toLowerCase();
+        return searchWords.some((word) => haystack.includes(word));
+      })
+    : [];
+  const isFiltered = searchMatchedItems.length > 0 && !showFullMenu;
+  const itemsToRender = isFiltered ? searchMatchedItems : visibleItems;
+
   return (
     <ScrollView style={{ backgroundColor: primary }} contentContainerStyle={{ paddingBottom: 48 }}>
       <View className="flex-row items-center justify-between px-6 pt-14">
@@ -155,6 +172,17 @@ export default function VendorProfile() {
         <Text className="text-3xl font-bold text-white">{vendor.storefront_name}</Text>
         {vendor.tagline && <Text className="text-white/70">{vendor.tagline}</Text>}
       </View>
+
+      {isFiltered && (
+        <View className="mx-6 mt-4 flex-row items-center justify-between rounded-md bg-white/10 px-3 py-2">
+          <Text className="text-sm text-white/70">Showing results for "{searchTerm}"</Text>
+          <Pressable onPress={() => setShowFullMenu(true)}>
+            <Text className="text-sm" style={{ color: accent }}>
+              Show full menu
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       <View className="mt-6 gap-1 px-6">
         <Text className="mb-1 text-lg font-semibold text-white">Hours</Text>
@@ -186,7 +214,7 @@ export default function VendorProfile() {
 
       <View className={`mt-6 px-6 ${isGrid ? "flex-row flex-wrap gap-3" : "gap-3"}`}>
         {categoriesQuery.data?.map((category) => {
-          const items = visibleItems.filter((i) => i.menu_category_id === category.id);
+          const items = itemsToRender.filter((i) => i.menu_category_id === category.id);
           if (items.length === 0) return null;
           return (
             <View key={category.id} className={isGrid ? "w-full" : ""}>

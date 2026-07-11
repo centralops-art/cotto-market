@@ -94,7 +94,13 @@ export default function Browse() {
               <Pressable
                 key={vendor.id}
                 className="overflow-hidden rounded-lg bg-white/5"
-                onPress={() => router.push(`/(app)/vendor-profile/${vendor.id}`)}
+                onPress={() =>
+                  router.push(
+                    debouncedQuery
+                      ? { pathname: "/(app)/vendor-profile/[id]", params: { id: vendor.id, q: debouncedQuery } }
+                      : `/(app)/vendor-profile/${vendor.id}`
+                  )
+                }
               >
                 {vendor.header_image_url && (
                   <Image source={{ uri: vendor.header_image_url }} className="h-32 w-full" resizeMode="cover" />
