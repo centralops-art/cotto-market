@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAdmin } from "@/lib/require-admin";
+import { sendEmail } from "@/lib/resend";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
@@ -49,5 +50,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     metadata: { stripe_refund_id: refund.id, amount_cents: refund.amount },
   });
 
-  return NextResponse.json({ ok: true, refundId: refund.id });
+  let emailError: string | undefined;
+  const { data: customerAuth } = await admin.service.auth.admin.getUserById(order.customer_profile_id);
+  if (customerAuth?.user?.email) {
+    const result = await sendEmail({
+      to: customerAuth.user.email,
+      subject: isFullRefund ? "Your Cotto order was refunded" : "Part of your Cotto order was refunded",
+      text: `$${(refund.amount / 100).toFixed(2)} has been refunded to your original payment method. It may take a few business days to appear on your statement.`,
+    });
+    emailError = result.error;
+  }
+
+  return NextResponse.json({ ok: true, refundId: refund.id, emailError });
 }
