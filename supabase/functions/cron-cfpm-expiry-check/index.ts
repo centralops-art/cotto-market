@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            from: "Cotto <onboarding@resend.dev>",
+            from: "Cotto <notifications@cottomarket.com>",
             to: settings.admin_allow_list,
             subject: `${nearingExpiry.length} vendor CFPM cert(s) expiring within ${WARNING_WINDOW_DAYS} days`,
             text: `The following vendors' CFPM certs expire soon:\n\n${lines}\n\nReach out before they're auto-suspended on expiry.`,
