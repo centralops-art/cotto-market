@@ -92,45 +92,47 @@ Deno.serve(async (req) => {
       }
 
       // Best-effort emails -- never block the webhook's 200 response on Resend.
-      try {
+      // Each send is independent: fetch() only rejects on network failure, not
+      // HTTP error status, so res.ok must be checked explicitly or a rejection
+      // (e.g. Resend's sandbox "verify a domain" 403) is silently swallowed.
+      async function sendEmail(to: string, subject: string, text: string) {
         const resendKey = Deno.env.get("RESEND_API_KEY");
-        if (resendKey) {
-          const { data: customerAuth } = await service.auth.admin.getUserById(order.customer_profile_id);
-          const customerEmail = customerAuth?.user?.email;
-          if (customerEmail) {
-            await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                from: "Cotto <onboarding@resend.dev>",
-                to: customerEmail,
-                subject: "Your Cotto order is confirmed",
-                text: `Thanks for your order! Total: $${(order.total_cents / 100).toFixed(2)}.\n\nYou'll hear from each vendor as they prepare your food.`,
-              }),
-            });
-          }
-          for (const suborder of suborders ?? []) {
-            const vendor = suborder.vendors as unknown as { email: string | null; storefront_name: string };
-            if (!vendor?.email) continue;
-            await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                from: "Cotto <onboarding@resend.dev>",
-                to: vendor.email,
-                subject: "You have a new Cotto order",
-                text: `${vendor.storefront_name}, you have a new order for $${(suborder.vendor_payout_cents / 100).toFixed(2)} (after platform fee). Open the app to confirm it.`,
-              }),
-            });
-          }
+        if (!resendKey) return;
+        try {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ from: "Cotto <onboarding@resend.dev>", to, subject, text }),
+          });
+          if (!res.ok) throw new Error(`Resend API error (${res.status}): ${await res.text()}`);
+        } catch (emailErr) {
+          await service.from("audit_log").insert({
+            action: "checkout_email_failed",
+            target_table: "orders",
+            target_id: orderId,
+            reason: (emailErr as Error).message,
+            metadata: { to },
+          });
         }
-      } catch (emailErr) {
-        await service.from("audit_log").insert({
-          action: "checkout_email_failed",
-          target_table: "orders",
-          target_id: orderId,
-          reason: (emailErr as Error).message,
-        });
+      }
+
+      const { data: customerAuth } = await service.auth.admin.getUserById(order.customer_profile_id);
+      const customerEmail = customerAuth?.user?.email;
+      if (customerEmail) {
+        await sendEmail(
+          customerEmail,
+          "Your Cotto order is confirmed",
+          `Thanks for your order! Total: $${(order.total_cents / 100).toFixed(2)}.\n\nYou'll hear from each vendor as they prepare your food.`
+        );
+      }
+      for (const suborder of suborders ?? []) {
+        const vendor = suborder.vendors as unknown as { email: string | null; storefront_name: string };
+        if (!vendor?.email) continue;
+        await sendEmail(
+          vendor.email,
+          "You have a new Cotto order",
+          `${vendor.storefront_name}, you have a new order for $${(suborder.vendor_payout_cents / 100).toFixed(2)} (after platform fee). Open the app to confirm it.`
+        );
       }
 
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
