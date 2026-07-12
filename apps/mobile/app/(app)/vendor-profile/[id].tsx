@@ -13,6 +13,7 @@ import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
+import { CartButton } from "../../../src/components/cart-button";
 
 const DAY_LABELS: Record<string, string> = {
   monday: "Mon",
@@ -152,7 +153,8 @@ export default function VendorProfile() {
         <Pressable onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
-        <View className="flex-row gap-4">
+        <View className="flex-row items-center gap-4">
+          <CartButton />
           <Pressable onPress={shareVendor}>
             <Text className="text-white/60">Share</Text>
           </Pressable>
