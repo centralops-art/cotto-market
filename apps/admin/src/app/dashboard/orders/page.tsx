@@ -19,7 +19,10 @@ export default async function OrdersPage() {
 
   return (
     <main className="mx-auto max-w-4xl p-8">
-      <h1 className="mb-6 text-2xl font-bold">Orders</h1>
+      <Link href="/dashboard" className="text-sm text-muted-foreground hover:underline">
+        &larr; Back to dashboard
+      </Link>
+      <h1 className="mb-6 mt-4 text-2xl font-bold">Orders</h1>
 
       <div className="flex flex-col gap-2">
         {orders?.length ? (
