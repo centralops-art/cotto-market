@@ -6,6 +6,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "rea
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { addToCart, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
+import { CartButton } from "../../../src/components/cart-button";
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -107,11 +108,14 @@ export default function ItemDetail() {
         <Pressable onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
-        <Pressable disabled={!profile || toggleFavorite.isPending} onPress={() => toggleFavorite.mutate()}>
-          <Text className={favoriteQuery.data ? "text-cotto-accent" : "text-white/60"}>
-            {favoriteQuery.data ? "★ Favorited" : "☆ Favorite"}
-          </Text>
-        </Pressable>
+        <View className="flex-row items-center gap-4">
+          <CartButton />
+          <Pressable disabled={!profile || toggleFavorite.isPending} onPress={() => toggleFavorite.mutate()}>
+            <Text className={favoriteQuery.data ? "text-cotto-accent" : "text-white/60"}>
+              {favoriteQuery.data ? "★ Favorited" : "☆ Favorite"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       {item.image_urls.length > 0 && (

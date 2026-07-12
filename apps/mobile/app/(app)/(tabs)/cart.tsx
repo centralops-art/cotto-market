@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
-import { useCartItems, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
+import { clearCart, useCartItems, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 
@@ -58,6 +58,8 @@ export default function Cart() {
   const invalidateCart = useInvalidateCart(cartQuery.data?.id);
   const [fulfillments, setFulfillments] = useState<Record<string, FulfillmentUI>>({});
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const items = itemsQuery.data ?? [];
   const vendorGroups = Object.values(
@@ -111,6 +113,23 @@ export default function Cart() {
       await supabase.from("cart_items").update({ quantity }).eq("id", itemId);
     }
     invalidateCart();
+  }
+
+  async function removeItem(itemId: string) {
+    await supabase.from("cart_items").delete().eq("id", itemId);
+    invalidateCart();
+  }
+
+  async function handleClearCart() {
+    if (!cartQuery.data) return;
+    setClearing(true);
+    try {
+      await clearCart(cartQuery.data.id);
+      invalidateCart();
+    } finally {
+      setClearing(false);
+      setConfirmingClear(false);
+    }
   }
 
   async function geocode(vendorId: string) {
@@ -194,7 +213,25 @@ export default function Cart() {
 
   return (
     <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 96, gap: 20 }}>
-      <Text className="text-2xl font-bold text-white">Cart</Text>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-2xl font-bold text-white">Cart</Text>
+        {vendorGroups.length > 0 &&
+          (confirmingClear ? (
+            <View className="flex-row items-center gap-3">
+              <Text className="text-sm text-white/60">Clear everything?</Text>
+              <Pressable disabled={clearing} onPress={handleClearCart}>
+                <Text className="text-sm font-semibold text-red-400">Confirm</Text>
+              </Pressable>
+              <Pressable disabled={clearing} onPress={() => setConfirmingClear(false)}>
+                <Text className="text-sm text-white/60">Cancel</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable onPress={() => setConfirmingClear(true)}>
+              <Text className="text-sm text-red-400">Clear cart</Text>
+            </Pressable>
+          ))}
+      </View>
 
       {vendorGroups.length === 0 ? (
         <Text className="text-white/60">Your cart is empty. Add a dish from a vendor's storefront.</Text>
@@ -225,6 +262,9 @@ export default function Cart() {
                       <Text className="w-16 text-right text-white/80">
                         ${((item.unit_price_cents * item.quantity) / 100).toFixed(2)}
                       </Text>
+                      <Pressable onPress={() => removeItem(item.id)}>
+                        <Text className="text-sm text-red-400">Remove</Text>
+                      </Pressable>
                     </View>
                   </View>
                 );

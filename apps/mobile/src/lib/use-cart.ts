@@ -46,6 +46,32 @@ export function useCartItems(cartId: string | undefined) {
   });
 }
 
+/** Read-only cart item count for nav badges -- unlike useOpenCart, never
+ * creates a cart just because a screen rendered it. */
+export function useCartBadgeCount() {
+  const { profile } = useAuth();
+
+  return useQuery({
+    queryKey: ["cart_badge_count", profile?.id],
+    enabled: !!profile,
+    queryFn: async () => {
+      const { data: cart } = await supabase
+        .from("carts")
+        .select("id")
+        .eq("profile_id", profile!.id)
+        .eq("status", "open")
+        .maybeSingle();
+      if (!cart) return 0;
+      const { count, error } = await supabase
+        .from("cart_items")
+        .select("id", { count: "exact", head: true })
+        .eq("cart_id", cart.id);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+}
+
 export function useCartItemCount(cartId: string | undefined) {
   return useQuery({
     queryKey: ["cart_item_count", cartId],
@@ -97,8 +123,16 @@ export async function addToCart(
 
 export function useInvalidateCart(cartId: string | undefined) {
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
   return () => {
     queryClient.invalidateQueries({ queryKey: ["cart_items", cartId] });
     queryClient.invalidateQueries({ queryKey: ["cart_item_count", cartId] });
+    queryClient.invalidateQueries({ queryKey: ["cart_badge_count", profile?.id] });
   };
+}
+
+/** Deletes every item in the cart (used by the "Clear cart" action). */
+export async function clearCart(cartId: string) {
+  const { error } = await supabase.from("cart_items").delete().eq("cart_id", cartId);
+  if (error) throw error;
 }
