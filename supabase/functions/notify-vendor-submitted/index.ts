@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Cotto <onboarding@resend.dev>",
+        from: "Cotto <notifications@cottomarket.com>",
         to: settings.admin_allow_list,
         subject: `New vendor pending review: ${vendor.storefront_name}`,
         text: `${vendor.storefront_name} has submitted a cook application and is waiting for review.\n\nOpen the admin dashboard to approve or reject.`,
