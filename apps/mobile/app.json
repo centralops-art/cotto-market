@@ -16,6 +16,12 @@
         {
           "photosPermission": "Cotto needs access to your photos to upload your CFPM certificate."
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.market.cotto.app"
+        }
       ]
     ],
     "ios": {

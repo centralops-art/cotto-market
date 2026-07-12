@@ -1,15 +1,21 @@
 import { ALLERGEN_LABELS, type Allergen } from "@cotto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
+import { addToCart, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const [quantity, setQuantity] = useState(1);
+  const [added, setAdded] = useState(false);
+  const cartQuery = useOpenCart();
+  const invalidateCart = useInvalidateCart(cartQuery.data?.id);
 
   const itemQuery = useQuery({
     queryKey: ["item_detail", id],
@@ -72,6 +78,18 @@ export default function ItemDetail() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["waitlist_entry", id, profile?.id] }),
   });
 
+  const addItem = useMutation({
+    mutationFn: async () => {
+      if (!id || !itemQuery.data || !cartQuery.data) return;
+      await addToCart(cartQuery.data.id, itemQuery.data.vendor_id, id, itemQuery.data.price_cents, quantity);
+    },
+    onSuccess: () => {
+      invalidateCart();
+      setAdded(true);
+      setQuantity(1);
+    },
+  });
+
   if (itemQuery.isLoading || !itemQuery.data) {
     return (
       <View className="flex-1 items-center justify-center bg-cotto-dark">
@@ -129,7 +147,7 @@ export default function ItemDetail() {
           </View>
         )}
 
-        {item.is_sold_out && (
+        {item.is_sold_out ? (
           <Pressable
             className="mt-6 items-center rounded-lg bg-cotto-accent py-3 disabled:opacity-50"
             disabled={!profile || joinWaitlist.isPending || !!waitlistQuery.data}
@@ -139,6 +157,39 @@ export default function ItemDetail() {
               {waitlistQuery.data ? "You're on the waitlist" : "Notify me when back"}
             </Text>
           </Pressable>
+        ) : (
+          <View className="mt-6 gap-3">
+            <View className="flex-row items-center justify-center gap-4">
+              <Pressable
+                className="h-10 w-10 items-center justify-center rounded-full bg-white/10"
+                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+              >
+                <Text className="text-lg text-white">-</Text>
+              </Pressable>
+              <Text className="w-8 text-center text-lg text-white">{quantity}</Text>
+              <Pressable
+                className="h-10 w-10 items-center justify-center rounded-full bg-white/10"
+                onPress={() => setQuantity((q) => q + 1)}
+              >
+                <Text className="text-lg text-white">+</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              className="items-center rounded-lg bg-cotto-accent py-3 disabled:opacity-50"
+              disabled={addItem.isPending || !cartQuery.data}
+              onPress={() => {
+                setAdded(false);
+                addItem.mutate();
+              }}
+            >
+              {addItem.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="font-semibold text-white">Add to cart</Text>
+              )}
+            </Pressable>
+            {added && <Text className="text-center text-cotto-accent">Added to cart</Text>}
+          </View>
         )}
       </View>
     </ScrollView>

@@ -1,4 +1,5 @@
 import "../global.css";
+import { StripeProvider } from "@stripe/stripe-react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
@@ -8,6 +9,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { queryClient } from "../src/lib/query-client";
 import { AuthProvider, useAuth } from "../src/lib/auth-context";
+
+const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 
 function RootNavigation() {
   const { session, profile, loading, isPasswordRecovery } = useAuth();
@@ -53,12 +56,14 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <StatusBar style="auto" />
-            <RootNavigation />
-          </AuthProvider>
-        </QueryClientProvider>
+        <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.market.cotto.app">
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <StatusBar style="auto" />
+              <RootNavigation />
+            </AuthProvider>
+          </QueryClientProvider>
+        </StripeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
