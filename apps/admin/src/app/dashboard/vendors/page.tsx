@@ -32,7 +32,10 @@ export default async function VendorsPage({
 
   return (
     <main className="mx-auto max-w-4xl p-8">
-      <h1 className="mb-6 text-2xl font-bold">Vendors</h1>
+      <Link href="/dashboard" className="text-sm text-muted-foreground hover:underline">
+        &larr; Back to dashboard
+      </Link>
+      <h1 className="mb-6 mt-4 text-2xl font-bold">Vendors</h1>
 
       <nav className="mb-6 flex flex-wrap gap-2 border-b border-border pb-3">
         {STATUS_TABS.map((tab) => (
