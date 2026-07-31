@@ -50,6 +50,51 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     metadata: { stripe_refund_id: refund.id, amount_cents: refund.amount },
   });
 
+  // Reverse each vendor's Transfer so Cotto's platform balance doesn't
+  // absorb the refund while the vendor keeps their payout. Only done for a
+  // full refund -- there's no UI (or unambiguous business rule) for mapping
+  // a partial refund amount to a specific vendor's portion of a multi-vendor
+  // order yet, so a partial refund is flagged for manual reconciliation
+  // instead of guessed at. Best-effort per suborder, after the customer
+  // refund (never blocks it) -- in practice protected by the 2-day Connect
+  // payout hold (stripe-connect-onboarding), so the funds should still be in
+  // the vendor's Connect balance to reverse from.
+  const transferReversalResults: { suborderId: string; reversed: boolean; error?: string }[] = [];
+  if (isFullRefund) {
+    const { data: suborders } = await admin.service
+      .from("vendor_suborders")
+      .select("id, stripe_transfer_id")
+      .eq("order_id", id)
+      .not("stripe_transfer_id", "is", null);
+
+    for (const suborder of suborders ?? []) {
+      try {
+        const reversal = await stripe.transfers.createReversal(suborder.stripe_transfer_id!);
+        await admin.service.from("vendor_suborders").update({ stripe_transfer_reversal_id: reversal.id }).eq("id", suborder.id);
+        transferReversalResults.push({ suborderId: suborder.id, reversed: true });
+      } catch (err) {
+        transferReversalResults.push({ suborderId: suborder.id, reversed: false, error: (err as Error).message });
+        await admin.service.from("audit_log").insert({
+          actor_profile_id: admin.user.id,
+          action: "transfer_reversal_failed",
+          target_table: "vendor_suborders",
+          target_id: suborder.id,
+          reason: (err as Error).message,
+          metadata: { order_id: id, stripe_transfer_id: suborder.stripe_transfer_id },
+        });
+      }
+    }
+  } else {
+    await admin.service.from("audit_log").insert({
+      actor_profile_id: admin.user.id,
+      action: "partial_refund_transfer_reversal_skipped",
+      target_table: "orders",
+      target_id: id,
+      reason: "Partial refunds are not automatically mapped to a vendor Transfer reversal -- needs manual reconciliation.",
+      metadata: { amount_cents: refund.amount },
+    });
+  }
+
   let emailError: string | undefined;
   const { data: customerAuth } = await admin.service.auth.admin.getUserById(order.customer_profile_id);
   if (customerAuth?.user?.email) {
@@ -61,5 +106,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     emailError = result.error;
   }
 
-  return NextResponse.json({ ok: true, refundId: refund.id, emailError });
+  return NextResponse.json({ ok: true, refundId: refund.id, emailError, transferReversalResults });
 }

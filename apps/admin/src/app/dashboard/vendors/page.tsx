@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/require-admin";
 import { StatusBadge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -11,19 +11,15 @@ export default async function VendorsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/login");
 
   const { status } = await searchParams;
   const activeTab: (typeof STATUS_TABS)[number] = STATUS_TABS.includes(status as (typeof STATUS_TABS)[number])
     ? (status as (typeof STATUS_TABS)[number])
     : "pending_review";
 
-  const service = createServiceRoleClient();
-  let query = service
+  let query = admin.service
     .from("vendors")
     .select("id, storefront_name, status, created_at, vendor_types")
     .order("created_at", { ascending: false });

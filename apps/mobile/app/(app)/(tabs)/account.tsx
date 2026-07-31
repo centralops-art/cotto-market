@@ -1,7 +1,7 @@
 import { ALLERGENS, ALLERGEN_LABELS, type Allergen } from "@cotto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Text, View, Pressable, ActivityIndicator, ScrollView } from "react-native";
+import { Text, View, Pressable, ActivityIndicator, ScrollView, Switch } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 
@@ -64,6 +64,15 @@ export default function Account() {
       await queryClient.invalidateQueries({ queryKey: ["vendor", session?.user.id] });
       router.push("/(app)/vendor-onboarding");
     },
+  });
+
+  const toggleSmsOptIn = useMutation({
+    mutationFn: async (value: boolean) => {
+      if (!profile) return;
+      const { error } = await supabase.from("profiles").update({ sms_opt_in: value }).eq("id", profile.id);
+      if (error) throw error;
+    },
+    onSuccess: refreshProfile,
   });
 
   const toggleAllergen = useMutation({
@@ -131,6 +140,17 @@ export default function Account() {
         </Pressable>
       )}
       {becomeVendor.isError && <Text className="text-red-400">{(becomeVendor.error as Error).message}</Text>}
+
+      <View className="mt-6 flex-row items-start gap-3 rounded-lg bg-white/5 p-4">
+        <Switch
+          value={profile?.sms_opt_in ?? false}
+          disabled={!profile || toggleSmsOptIn.isPending}
+          onValueChange={(value) => toggleSmsOptIn.mutate(value)}
+        />
+        <Text className="flex-1 text-sm text-white/70">
+          Text me order status updates (3-8 messages per order). Msg &amp; data rates may apply. Reply STOP anytime to opt out.
+        </Text>
+      </View>
 
       <View className="mt-6 gap-2">
         <Text className="text-lg font-semibold text-white">Allergens to avoid</Text>

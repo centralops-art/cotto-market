@@ -132,19 +132,54 @@ Deno.serve(async (req) => {
     if (cart.profile_id !== user.id) return json({ error: "Cart not found or not yours" }, 404);
     if (cart.status !== "open") return json({ error: "This cart has already been checked out." }, 400);
 
-    const { data: cartItems, error: itemsError } = await supabase
+    // Idempotency: a cart can have at most one in-flight (pending_payment)
+    // order at a time (enforced by a partial unique index -- migration
+    // 0027). If one already exists here -- a double-tap/retry, or the
+    // customer abandoned checkout and returned later with a possibly-changed
+    // cart -- cancel its PaymentIntent and mark it cancelled before creating
+    // a fresh order. Reusing the stale one blindly would risk charging an
+    // amount that no longer matches the cart's current contents.
+    const { data: stalePendingOrder } = await service
+      .from("orders")
+      .select("id, payment_intent_id")
+      .eq("cart_id", cartId)
+      .eq("status", "pending_payment")
+      .maybeSingle();
+    if (stalePendingOrder) {
+      if (stalePendingOrder.payment_intent_id) {
+        try {
+          await stripe.paymentIntents.cancel(stalePendingOrder.payment_intent_id);
+        } catch {
+          // Already canceled/succeeded/failed on Stripe's side -- fine either way, it's being superseded regardless.
+        }
+      }
+      await service.from("orders").update({ status: "cancelled" }).eq("id", stalePendingOrder.id);
+      await service.from("vendor_suborders").update({ status: "cancelled" }).eq("order_id", stalePendingOrder.id);
+    }
+
+    // Price and vendor are never taken from cart_items -- a client can submit
+    // arbitrary values for both via a direct API call (migration 0022 also
+    // closes this at the DB layer, but checkout re-derives independently
+    // here rather than trusting that alone). menu_items is the only source
+    // of truth for what a line item actually costs and which vendor it belongs to.
+    const { data: rawCartItems, error: itemsError } = await supabase
       .from("cart_items")
-      .select("id, vendor_id, menu_item_id, quantity, unit_price_cents, menu_items(name, is_available, is_sold_out, deleted_at)")
+      .select("id, menu_item_id, quantity, menu_items(name, price_cents, vendor_id, is_available, is_sold_out, deleted_at)")
       .eq("cart_id", cartId);
     if (itemsError) throw itemsError;
-    if (!cartItems || cartItems.length === 0) return json({ error: "Cart is empty" }, 400);
+    if (!rawCartItems || rawCartItems.length === 0) return json({ error: "Cart is empty" }, 400);
 
-    for (const item of cartItems) {
-      const mi = item.menu_items as unknown as { is_available: boolean; is_sold_out: boolean; deleted_at: string | null };
+    for (const item of rawCartItems) {
+      const mi = item.menu_items as unknown as { is_available: boolean; is_sold_out: boolean; deleted_at: string | null } | null;
       if (!mi || mi.deleted_at || !mi.is_available || mi.is_sold_out) {
         return json({ error: "One of the items in your cart is no longer available. Please remove it and try again." }, 409);
       }
     }
+
+    const cartItems = rawCartItems.map((item) => {
+      const mi = item.menu_items as unknown as { name: string; price_cents: number; vendor_id: string };
+      return { id: item.id, menu_item_id: item.menu_item_id, quantity: item.quantity, vendor_id: mi.vendor_id, unit_price_cents: mi.price_cents, name: mi.name };
+    });
 
     const { data: region, error: regionError } = await service
       .from("regions")
@@ -287,7 +322,7 @@ Deno.serve(async (req) => {
         vendorPayoutCents: subtotalCents - platformFeeCents,
         items: items.map((i) => ({
           menuItemId: i.menu_item_id,
-          name: (i.menu_items as unknown as { name: string }).name,
+          name: i.name,
           unitPriceCents: i.unit_price_cents,
           quantity: i.quantity,
         })),
@@ -311,7 +346,18 @@ Deno.serve(async (req) => {
       })
       .select()
       .single();
-    if (orderError || !order) throw orderError ?? new Error("Failed to create order");
+    if (orderError) {
+      // 23505 = unique_violation -- the orders_cart_id_pending_unique index
+      // (migration 0027) caught a true concurrent duplicate that slipped
+      // past the stale-order cancellation above (a genuine race, not a
+      // sequential retry). Ask the client to retry rather than guessing
+      // which of the two concurrent requests should "win".
+      if (orderError.code === "23505") {
+        return json({ error: "A checkout is already in progress for this cart. Please try again in a moment." }, 409);
+      }
+      throw orderError;
+    }
+    if (!order) throw new Error("Failed to create order");
 
     for (const plan of suborderPlans) {
       const { data: suborder, error: suborderError } = await service

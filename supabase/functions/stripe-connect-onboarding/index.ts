@@ -71,6 +71,15 @@ Deno.serve(async (req) => {
         // omitting it just trades one manual Stripe approval step for
         // another with no benefit -- the capability sits unused either way.
         capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
+        // Explicit payout hold (not just relying on Stripe's default) so a
+        // refund can reverse the vendor's Transfer (see stripe-webhook's
+        // refund handling) before the payout has actually left their Connect
+        // balance. 2 is the platform-enforced minimum for a US Express
+        // account (confirmed via a direct API test -- delay_days: 1 is
+        // rejected outright), which already exceeds the 24h this needs to
+        // cover; setting it explicitly means it doesn't silently depend on
+        // Stripe's current default never changing.
+        settings: { payouts: { schedule: { interval: "daily", delay_days: 2 } } },
       });
       accountId = account.id;
 

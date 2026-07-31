@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { completeProfile, completeProfileSchema, type CompleteProfileInput } from "@cotto/shared";
+import { completeProfile, completeProfileSchema, TERMS_URL, PRIVACY_URL, type CompleteProfileInput } from "@cotto/shared";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
 import { supabase } from "../../src/lib/supabase";
 import { useAuth } from "../../src/lib/auth-context";
 
@@ -47,6 +47,26 @@ export default function CompleteProfile() {
         )}
       />
       {errors.phone && <Text className="text-red-400">{errors.phone.message}</Text>}
+
+      {/* Twilio A2P 10DLC-required inline SMS disclosure: must sit directly
+          below the phone field, visible before Continue, not behind a
+          checkbox or a "see more" toggle. text-sm (14px) comfortably clears
+          the 12px minimum; white/70 on the dark background is not
+          gray-on-gray. */}
+      <Text className="text-sm text-white/70">
+        By providing your phone number, you agree to receive transactional SMS messages from Cotto Marketplace about
+        your orders, including order confirmations, status updates, delivery alerts, and account notifications.
+        Message frequency varies based on order activity. Msg &amp; data rates may apply. Reply STOP to opt out, HELP
+        for help.{" "}
+        <Text className="text-cotto-accent underline" onPress={() => Linking.openURL(PRIVACY_URL)}>
+          Privacy Policy
+        </Text>{" "}
+        |{" "}
+        <Text className="text-cotto-accent underline" onPress={() => Linking.openURL(TERMS_URL)}>
+          Terms of Service
+        </Text>
+      </Text>
+
       {formError && <Text className="text-red-400">{formError}</Text>}
 
       <Pressable

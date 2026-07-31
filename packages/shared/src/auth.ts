@@ -8,6 +8,14 @@ export const signUpSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   fullName: z.string().trim().min(1, "Full name is required"),
+  // General account creation consent (Terms & Conditions + Privacy Policy)
+  // -- required to submit signup at all. SMS-specific consent lives
+  // separately, as an inline disclosure directly below the phone number
+  // field on complete-profile.tsx (customers) and business-basics-step.tsx
+  // (vendors), per Twilio's A2P 10DLC campaign corrective guidance: consent
+  // must be shown at the point the phone number is actually collected, not
+  // bundled into an earlier, phone-number-less screen.
+  agreedToTerms: z.boolean().refine((v) => v === true, "You must agree to the Terms & Conditions and Privacy Policy"),
 });
 export type SignUpInput = z.infer<typeof signUpSchema>;
 
@@ -34,12 +42,19 @@ export type MagicLinkRequestInput = z.infer<typeof magicLinkRequestSchema>;
  * seeded from `full_name` in signup metadata.
  */
 
-export async function signUpWithPassword(client: CottoSupabaseClient, input: SignUpInput) {
+export async function signUpWithPassword(client: CottoSupabaseClient, input: SignUpInput, emailRedirectTo: string) {
   const { email, password, fullName } = signUpSchema.parse(input);
   return client.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName } },
+    // No sms_opt_in here -- this screen has no phone field and makes no SMS
+    // representation (see the signUpSchema comment). profiles.sms_opt_in
+    // stays at its default false until completeProfile() below.
+    // emailRedirectTo points confirmation links at a generic "you're
+    // confirmed" page rather than falling back to site_url (the ADMIN app's
+    // login page, which customers confirming a mobile-app signup have no
+    // business landing on).
+    options: { data: { full_name: fullName }, emailRedirectTo },
   });
 }
 
@@ -76,7 +91,11 @@ export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 
 export async function completeProfile(client: CottoSupabaseClient, userId: string, input: CompleteProfileInput) {
   const { phone } = completeProfileSchema.parse(input);
-  return client.from("profiles").update({ phone }).eq("id", userId);
+  // sms_opt_in: true unconditionally -- the inline SMS disclosure shown
+  // directly below the phone field on this screen (not a checkbox, per
+  // Twilio's explicit guidance) is what represents consent; submitting the
+  // form with that disclosure visible is the consenting action.
+  return client.from("profiles").update({ phone, sms_opt_in: true }).eq("id", userId);
 }
 
 export async function sendMagicLink(

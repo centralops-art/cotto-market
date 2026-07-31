@@ -3,12 +3,14 @@ import {
   businessBasicsSchema,
   VENDOR_TYPES,
   VENDOR_TYPE_LABELS,
+  TERMS_URL,
+  PRIVACY_URL,
   type BusinessBasicsInput,
   type VendorType,
 } from "@cotto/shared";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
 
 interface Props {
   defaultValues: BusinessBasicsInput;
@@ -108,6 +110,23 @@ export function BusinessBasicsStep({ defaultValues, onNext }: Props) {
         )}
       />
       {errors.phone && <Text className="text-red-400">{errors.phone.message}</Text>}
+
+      {/* Twilio A2P 10DLC-required inline SMS disclosure: must sit directly
+          below the business phone field, visible before Next, not behind a
+          checkbox. */}
+      <Text className="text-sm text-white/70">
+        By providing your phone number, you agree to receive recurring transactional SMS messages from Cotto
+        Marketplace related to your vendor account, including order alerts, delivery notifications, and payout
+        confirmations. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for
+        help.{" "}
+        <Text className="text-cotto-accent underline" onPress={() => Linking.openURL(PRIVACY_URL)}>
+          Privacy Policy
+        </Text>{" "}
+        |{" "}
+        <Text className="text-cotto-accent underline" onPress={() => Linking.openURL(TERMS_URL)}>
+          Terms of Service
+        </Text>
+      </Text>
 
       <Controller
         control={control}

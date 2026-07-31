@@ -1,24 +1,20 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/require-admin";
 import { StatusBadge } from "@/components/ui/badge";
 import { VendorActions } from "./vendor-actions";
 
 export default async function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/login");
 
   const { id } = await params;
-  const service = createServiceRoleClient();
-  const { data: vendor } = await service.from("vendors").select("*").eq("id", id).single();
+  const { data: vendor } = await admin.service.from("vendors").select("*").eq("id", id).single();
   if (!vendor) notFound();
 
   let cfpmSignedUrl: string | null = null;
   if (vendor.cfpm_cert_url) {
-    const { data } = await service.storage.from("cfpm-certs").createSignedUrl(vendor.cfpm_cert_url, 300);
+    const { data } = await admin.service.storage.from("cfpm-certs").createSignedUrl(vendor.cfpm_cert_url, 300);
     cfpmSignedUrl = data?.signedUrl ?? null;
   }
 

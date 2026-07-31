@@ -1,24 +1,20 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/require-admin";
 import { StatusBadge } from "@/components/ui/badge";
 import { OrderActions } from "./order-actions";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/login");
 
   const { id } = await params;
-  const service = createServiceRoleClient();
-  const { data: order } = await service.from("orders").select("*").eq("id", id).single();
+  const { data: order } = await admin.service.from("orders").select("*").eq("id", id).single();
   if (!order) notFound();
 
-  const { data: customerAuth } = await service.auth.admin.getUserById(order.customer_profile_id);
+  const { data: customerAuth } = await admin.service.auth.admin.getUserById(order.customer_profile_id);
 
-  const { data: suborders } = await service
+  const { data: suborders } = await admin.service
     .from("vendor_suborders")
     .select("*, vendors(storefront_name), order_items(*)")
     .eq("order_id", id)

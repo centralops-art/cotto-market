@@ -1,17 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/require-admin";
 import { StatusBadge } from "@/components/ui/badge";
 
 export default async function OrdersPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/login");
 
-  const service = createServiceRoleClient();
-  const { data: orders } = await service
+  const { data: orders } = await admin.service
     .from("orders")
     .select("id, total_cents, status, created_at")
     .order("created_at", { ascending: false })

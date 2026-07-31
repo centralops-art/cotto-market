@@ -30,6 +30,12 @@ insert into public.regions (
 )
 on conflict (slug) do nothing;
 
+-- support_email/admin_allow_list are local-dev placeholders on purpose --
+-- this file is git-tracked. Real production values are set directly against
+-- the hosted system_settings row (e.g. via the admin app or a one-off
+-- `update system_settings set ...` against the hosted DB), never committed
+-- here. If you're testing the admin allow-list gate locally, update
+-- admin_allow_list below to your own local test email first.
 insert into public.system_settings (
   id, default_platform_fee_pct, free_trial_default_days, support_email,
   cottage_food_disclaimer_md, delivery_partner_agreement_md, admin_allow_list
@@ -37,13 +43,13 @@ insert into public.system_settings (
   1,
   8,
   90,
-  'CentralOps@CottoMarket.com',
+  'support@example.com',
   '# Cottage Food Disclaimer' || E'\n\n' ||
   '_Placeholder -- must be reviewed by an Illinois attorney before live launch (see spec section 7)._',
   '# Cotto Delivery Partner Agreement' || E'\n\n' ||
   '_Placeholder -- must be reviewed by an Illinois attorney before live launch. Covers independent contractor status, ' ||
   'insurance attestation, liability waiver, payout terms, and suspension/termination rules (see spec section 7)._',
-  array['CentralOps@CottoMarket.com', 'Neal.Weingarden@gmail.com', 'CPITTS1183@gmail.com']
+  array['admin@example.com']
 )
 on conflict (id) do update set
   admin_allow_list = excluded.admin_allow_list;

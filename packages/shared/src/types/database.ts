@@ -142,24 +142,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          profile_id: string | null
-          session_id: string | null
+          profile_id: string
           status: Database["public"]["Enums"]["cart_status"]
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
-          profile_id?: string | null
-          session_id?: string | null
+          profile_id: string
           status?: Database["public"]["Enums"]["cart_status"]
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
-          profile_id?: string | null
-          session_id?: string | null
+          profile_id?: string
           status?: Database["public"]["Enums"]["cart_status"]
           updated_at?: string
         }
@@ -606,6 +603,24 @@ export type Database = {
           },
         ]
       }
+      processed_stripe_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          processed_at: string
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          processed_at?: string
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          processed_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           allergen_preferences: string[]
@@ -615,6 +630,7 @@ export type Database = {
           id: string
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
+          sms_opt_in: boolean
           updated_at: string
           username: string | null
         }
@@ -626,6 +642,7 @@ export type Database = {
           id: string
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          sms_opt_in?: boolean
           updated_at?: string
           username?: string | null
         }
@@ -637,6 +654,7 @@ export type Database = {
           id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          sms_opt_in?: boolean
           updated_at?: string
           username?: string | null
         }
@@ -927,6 +945,7 @@ export type Database = {
           ready_at: string | null
           status: Database["public"]["Enums"]["suborder_status"]
           stripe_transfer_id: string | null
+          stripe_transfer_reversal_id: string | null
           subtotal_cents: number
           updated_at: string
           vendor_id: string
@@ -949,6 +968,7 @@ export type Database = {
           ready_at?: string | null
           status?: Database["public"]["Enums"]["suborder_status"]
           stripe_transfer_id?: string | null
+          stripe_transfer_reversal_id?: string | null
           subtotal_cents: number
           updated_at?: string
           vendor_id: string
@@ -971,6 +991,7 @@ export type Database = {
           ready_at?: string | null
           status?: Database["public"]["Enums"]["suborder_status"]
           stripe_transfer_id?: string | null
+          stripe_transfer_reversal_id?: string | null
           subtotal_cents?: number
           updated_at?: string
           vendor_id?: string
@@ -1075,6 +1096,7 @@ export type Database = {
           rejected_reason: string | null
           search_tsv: unknown
           slug: string
+          sms_opt_in: boolean
           state: string | null
           status: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
@@ -1113,6 +1135,7 @@ export type Database = {
           rejected_reason?: string | null
           search_tsv?: unknown
           slug: string
+          sms_opt_in?: boolean
           state?: string | null
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
@@ -1151,6 +1174,7 @@ export type Database = {
           rejected_reason?: string | null
           search_tsv?: unknown
           slug?: string
+          sms_opt_in?: boolean
           state?: string | null
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name?: string
@@ -1233,7 +1257,17 @@ export type Database = {
         Returns: boolean
       }
       is_ops_admin: { Args: never; Returns: boolean }
+      is_order_paid: { Args: { target_order_id: string }; Returns: boolean }
+      is_valid_message_recipient: {
+        Args: {
+          recipient_profile_id: string
+          sender_profile_id: string
+          so_id: string
+        }
+        Returns: boolean
+      }
       owns_vendor: { Args: { target_vendor_id: string }; Returns: boolean }
+      suborder_customer_profile_id: { Args: { so_id: string }; Returns: string }
     }
     Enums: {
       cart_status: "open" | "abandoned" | "checked_out"

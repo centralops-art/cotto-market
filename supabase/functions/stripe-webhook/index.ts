@@ -34,6 +34,23 @@ Deno.serve(async (req) => {
     return new Response(`Signature verification failed: ${(err as Error).message}`, { status: 400 });
   }
 
+  // The `order.status === 'paid'` check below only guards against SEQUENTIAL
+  // replay (a retry arriving after the first delivery already finished
+  // writing) -- two CONCURRENT deliveries of the same event could both read
+  // 'pending_payment' before either finishes, and both fire vendor Transfers.
+  // event_id's primary key is the atomic arbitrator: whichever concurrent
+  // request's insert wins processes the event, the other gets a unique
+  // violation and bails out here having done no work.
+  const { error: eventInsertError } = await service
+    .from("processed_stripe_events")
+    .insert({ event_id: event.id, event_type: event.type });
+  if (eventInsertError) {
+    if (eventInsertError.code === "23505") {
+      return new Response(JSON.stringify({ ok: true, alreadyProcessed: true }), { status: 200 });
+    }
+    return new Response(`Failed to record event: ${eventInsertError.message}`, { status: 500 });
+  }
+
   try {
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as Stripe.PaymentIntent;
@@ -67,13 +84,21 @@ Deno.serve(async (req) => {
           continue;
         }
         try {
-          const transfer = await stripe.transfers.create({
-            amount: suborder.vendor_payout_cents,
-            currency: "usd",
-            destination: vendor.stripe_account_id,
-            transfer_group: orderId,
-            source_transaction: typeof pi.latest_charge === "string" ? pi.latest_charge : undefined,
-          });
+          // idempotencyKey scoped to the suborder: even if some other bug
+          // ever causes this code to run twice for the same suborder,
+          // Stripe itself will only create the Transfer once and return the
+          // cached result the second time -- independent of (and a backstop
+          // for) the event_id tracking above.
+          const transfer = await stripe.transfers.create(
+            {
+              amount: suborder.vendor_payout_cents,
+              currency: "usd",
+              destination: vendor.stripe_account_id,
+              transfer_group: orderId,
+              source_transaction: typeof pi.latest_charge === "string" ? pi.latest_charge : undefined,
+            },
+            { idempotencyKey: `transfer-${suborder.id}` }
+          );
           await service.from("vendor_suborders").update({ stripe_transfer_id: transfer.id }).eq("id", suborder.id);
         } catch (transferErr) {
           await service.from("audit_log").insert({
@@ -151,6 +176,13 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ ok: true, ignored: event.type }), { status: 200 });
   } catch (err) {
+    // The event_id claim above happens before any work starts (that's what
+    // makes it an effective concurrency guard), but that means a genuine
+    // failure here must release it -- otherwise a legitimate Stripe retry
+    // after a real error would be silently swallowed as "already processed"
+    // forever, with the order stuck at pending_payment and no transfers/
+    // emails ever sent.
+    await service.from("processed_stripe_events").delete().eq("event_id", event.id);
     return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
   }
 });

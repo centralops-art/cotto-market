@@ -24,7 +24,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isProtectedRoute = request.nextUrl.pathname.startsWith("/dashboard");
+  const isProtectedRoute = request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/mfa");
   if (isProtectedRoute && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

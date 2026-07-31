@@ -75,12 +75,18 @@ export default function VendorOnboarding() {
           <BusinessBasicsStep
             defaultValues={businessDefaults}
             onNext={async (values) => {
+              // sms_opt_in: true unconditionally -- the inline SMS disclosure
+              // shown directly below the phone field on this step (not a
+              // checkbox, per Twilio's A2P 10DLC guidance) is what represents
+              // consent; submitting the form with that disclosure visible is
+              // the consenting action.
               await patchVendor({
                 storefront_name: values.storefrontName,
                 tagline: values.tagline || null,
                 vendor_types: values.vendorTypes,
                 phone: values.phone,
                 email: values.email,
+                sms_opt_in: true,
               });
               setStep(1);
             }}
