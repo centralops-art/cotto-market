@@ -269,6 +269,14 @@ sender_name = "Cotto"
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Custom magic-link template -- surfaces {{ .Token }} (the 6-digit code) in
+# addition to the default {{ .ConfirmationURL }} link, since the link alone
+# only works in the browser/device that requested it (PKCE code_verifier is
+# stored locally on that device). Used by admin/login for cross-device sign-in.
+[auth.email.template.magic_link]
+subject = "Your Cotto Admin sign-in link"
+content_path = "./supabase/templates/magic_link.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
