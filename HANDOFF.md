@@ -1,12 +1,19 @@
-# Cotto Marketplace — Handoff (Phase 6 built, pending gate test)
+# Cotto Marketplace — Handoff (Phase 6 built + verified except Twilio-gated SMS)
 
-Last updated: 2026-07-12. `main` is still at commit `a191dc7` (Phase 0-5) —
-Phase 6's code is built and DB changes are live on the hosted project, but
-nothing is committed/merged yet; see §11 for why.
+Last updated: 2026-08-02. `main` is at commit `8a6fd90` — Phase 6 (cook order
+lifecycle, external security review fixes, auth hardening) is merged, plus
+three Phase 6 gate-test follow-up fixes from this session (§12). This is a
+**provisional merge**: the founder pushed Phase 6 to `main` on 2026-07-30 to
+let other work continue while waiting on Twilio's A2P 10DLC campaign review
+(response times have been inconsistent), *before* the full gate-test
+walkthrough in §11 could be completed — SMS notifications can't be verified
+until Twilio approves the resubmitted campaign. Everything in the Phase 6
+gate-test walkthrough that does **not** depend on SMS/Twilio has since been
+verified. §12 documents exactly what was checked and fixed this session.
 
-This doc is meant to let a fresh Claude Code session pick up mid-Phase-6 (or
-Phase 7, once the gate passes) with zero re-discovery. Read this fully before
-touching code.
+This doc is meant to let a fresh Claude Code session pick up once Twilio
+approves — to close out the Phase 6 gate test and start Phase 7 cleanly —
+with zero re-discovery. Read this fully before touching code.
 
 ---
 
@@ -46,11 +53,15 @@ engineer. Neal Weingarden is a technical overseer with admin access.
 ```
 
 Monorepo: pnpm workspaces. Root scripts: `pnpm typecheck`, `pnpm lint`, `pnpm test`
-(all run per-workspace via `pnpm -r --if-present run <script>`).
+(all run per-workspace via `pnpm -r --if-present run <script>`). Root
+`package.json`'s `name` is `"cotto"` -- relevant if you ever run a bare
+`vercel` CLI command from repo root, see the Vercel CLI gotchas in §14.
 
 GitHub: `centralops-art/cotto-market`. CI (`typecheck-lint-test` workflow) gates
-every PR. Vercel auto-deploys `apps/admin` from `main` (admin.cottomarket.com).
-No CI/CD for the mobile app — it's tested via Expo dev client + EAS builds.
+every PR. Vercel auto-deploys `apps/admin` from `main` (admin.cottomarket.com),
+project name **`cotto-market`** (not `cotto` -- see §14 gotcha #1 before
+running any `vercel` CLI command in this repo). No CI/CD for the mobile app —
+it's tested via Expo dev client + EAS builds.
 
 ---
 
@@ -103,7 +114,7 @@ No CI/CD for the mobile app — it's tested via Expo dev client + EAS builds.
 
 ---
 
-## 4. Database: migrations 0001–0016 (all applied to hosted + local)
+## 4. Database: migrations 0001–0031 (all applied to hosted + local)
 
 | # | Contents |
 |---|---|
@@ -124,9 +135,9 @@ No CI/CD for the mobile app — it's tested via Expo dev client + EAS builds.
 | 0018 | Phase 6: `suborder_customer_profile_id(so_id)` SECURITY DEFINER function — lets a cook read the customer's `profiles.id` for a suborder they own (needed to address the `messages` thread), without widening `orders_select` RLS (which would leak the whole multi-vendor order's financials to every vendor on it). |
 | 0019 | Phase 6: `profiles.sms_opt_in` (boolean, default false) — gates the SMS send in `update-suborder-status`. Superseded in practice by 0020 (see §12). |
 | 0020 | Phase 6: `handle_new_user()` now seeds `sms_opt_in` from signup metadata, same mechanism already used for `full_name` — bundles SMS consent into the mandatory signup checkbox. |
-| 0021-0028 | **Security fixes from external code review — see §12 for full detail.** 0021: vendor/delivery-profile self-approval guard (`BEFORE INSERT`). 0022: `cart_items` price/vendor integrity (`sync_cart_item_price()`). 0023: reviews require a completed order, messages require the real counterpart. 0024: guest carts moved to Supabase Anonymous Sign-Ins, dropped `carts.session_id`, `profile_id` now `NOT NULL`. 0025: `is_order_paid()` gates vendor suborder visibility/updates. 0026: `vendor_suborders.stripe_transfer_reversal_id` for refund reconciliation. 0027: `orders_cart_id_pending_unique` partial index (checkout idempotency). 0028: `processed_stripe_events` table (webhook idempotency). |
-| 0021 | **Security fix** (external code review, see §13): `guard_vendor_owner_insert` / `guard_delivery_profile_owner_insert` BEFORE INSERT triggers — closes a vendor/delivery-profile self-approval hole where a direct `.insert({status: 'active', ...})` bypassed admin review entirely (the existing guard triggers were UPDATE-only). |
-| 0022 | **Security fix** (external code review, see §13): `sync_cart_item_price()` BEFORE INSERT OR UPDATE trigger on `cart_items` — makes `unit_price_cents`/`vendor_id` an authoritative mirror of the live `menu_items` row for every caller, closing a price-tampering hole where checkout trusted client-supplied cart values. |
+| 0021-0029 | **Security fixes from external code review — see §13 for full detail.** 0021: vendor/delivery-profile self-approval guard (`BEFORE INSERT`). 0022: `cart_items` price/vendor integrity (`sync_cart_item_price()`). 0023: reviews require a completed order, messages require the real counterpart. 0024: guest carts moved to Supabase Anonymous Sign-Ins, dropped `carts.session_id`, `profile_id` now `NOT NULL`. 0025: `is_order_paid()` gates vendor suborder visibility/updates. 0026: `vendor_suborders.stripe_transfer_reversal_id` for refund reconciliation. 0027: `orders_cart_id_pending_unique` partial index (checkout idempotency). 0028: `processed_stripe_events` table (webhook idempotency). 0029: storage bucket file-size/MIME limits. |
+| 0030 | Phase 6 (third SMS-consent iteration): `vendors.sms_opt_in`, mirrors `profiles.sms_opt_in` for the business-basics onboarding step. See §13. |
+| 0031 | **2026-08-02 gate-test follow-up (§12):** `suborder_customer_display_name(so_id)` SECURITY DEFINER function — same gate as `suborder_customer_profile_id` (0018), returns the customer's `full_name` instead of just their profile id. Lets Kitchen screens show who placed the order. |
 
 **RLS pattern for orders/suborders/order_items**: written *only* by service-role
 edge functions (checkout function creates them as `pending_payment`; webhook
@@ -210,17 +221,46 @@ only the account owner's own inbox — fixed across all 4 call sites: admin
 `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (pk_test_... — user provided it, already
 in place).
 
-**`apps/admin/.env.local`** (not committed) + **Vercel env vars** (set per-env via
-`vercel env add`, separately from `.env.local` — this bit the user once before,
-Vercel doesn't read local `.env.local`): `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`,
-`STRIPE_SECRET_KEY`.
+**`apps/admin/.env.local`** (not committed, points at **local** Supabase --
+`http://127.0.0.1:54321`, requires `supabase start`/Docker) + **Vercel env
+vars** (set per-env via `vercel env add`, separately from `.env.local` — this
+bit the user once before, Vercel doesn't read local `.env.local`):
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY`.
+
+**As of 2026-08-02, all 5 of these are now set for both the `Production` and
+`Preview` Vercel environments** on the `cotto-market` project (Preview was
+previously missing all 5 entirely, breaking every PR preview deploy that
+touched the MFA pages — see §12 for the fix and the "Sensitive" env var
+gotcha, and §14 for the general Vercel CLI gotchas). If you ever need to
+re-sync Preview from Production values, do **not** use `vercel env pull` to
+read Production's values first — those vars are marked "Sensitive" in
+Vercel, so pulling them back returns a redacted placeholder string, not the
+real value. Source real values from `apps/mobile/.env` (Supabase URL/anon
+key), a fresh `supabase projects api-keys --project-ref hlwatggikosoeejskujq`
+(service role key), or `apps/admin/.env.local` (Resend/Stripe -- same
+accounts as production, just not Vercel-managed).
+
+**If the hosted project's `SUPABASE_SERVICE_ROLE_KEY` is ever rotated**: it
+needs updating in the Vercel env var (`apps/admin`, both Production and
+Preview) or every `requireAdmin()`-gated admin route and the vendor-approval/
+refund routes will break. Edge functions get their own copy auto-injected by
+the Supabase platform and should stay in sync automatically. You do not need
+the user to paste the key in chat -- fetch it live via
+`supabase projects api-keys --project-ref hlwatggikosoeejskujq` (already
+authenticated) rather than storing it. **Do not print the raw key value into
+your visible output/response** -- write it straight to a local file and read
+from there, the same way §12's fixes handled it; a legacy service_role key
+accidentally got printed into a session transcript once already this
+project (2026-08-02), flagged to the user, their call whether to rotate.
 
 **Supabase Auth config** (`supabase/config.toml`, synced to hosted via `supabase
 config push` — **this command overwrites hosted with whatever's in the local
 file**, be careful): `site_url = "https://admin.cottomarket.com"`, custom Resend
 SMTP for auth emails, redirect URLs list includes both hosted and local dev
-targets.
+targets. As of migration-adjacent config from 2026-08-02, also includes a
+custom `[auth.email.template.magic_link]` (see §12) surfacing `{{ .Token }}`
+(the 6-digit OTP code) alongside the default `{{ .ConfirmationURL }}` link.
 
 ---
 
@@ -239,9 +279,10 @@ app/
     item/[id].tsx           item detail: images, allergens, favorite, waitlist, add-to-cart w/ qty stepper
     checkout.tsx            Stripe PaymentSheet
     order-confirmation.tsx  polls order status until webhook flips it to 'paid'
-    kitchen/[id].tsx        Phase 6: cook's suborder detail -- items, fulfillment info, status
-                             action buttons (calls update-suborder-status), MessageThread. Pushed
-                             outside (tabs), same "no bottom tab bar reachable" gotcha as below.
+    kitchen/[id].tsx        Phase 6: cook's suborder detail -- items, fulfillment info, customer name
+                             (added 2026-08-02, see §12), status action buttons (calls
+                             update-suborder-status), MessageThread. Pushed outside (tabs),
+                             same "no bottom tab bar reachable" gotcha as below.
     order-tracking/[id].tsx Phase 6: customer's suborder detail -- status timeline (pickup vs
                              delivery step lists), items, MessageThread. Same nav gotcha.
     (tabs)/                 bottom tab bar
@@ -293,18 +334,31 @@ each screen's header. If Phase 6+ adds more screens outside the tabs group
 
 ```
 src/app/
-  login/, auth/callback/route.ts      magic-link auth (PKCE flow -- see gotcha in §9), allow-list gated
+  login/                               magic-link + 6-digit-code auth (PKCE flow -- see
+                                        §9 bug #6 and §12 for why both paths exist), allow-list
+                                        gated. Now surfaces /auth/callback's ?error= reason
+                                        (previously silently dropped, see §9 bug #7 -- fixed
+                                        2026-08-02).
+  auth/callback/route.ts               magic-link click path: exchangeCodeForSession, then
+                                        gateAdminUser()
+  api/admin/
+    verify-code/route.ts               2026-08-02: 6-digit-code path, verifyOtp({type:"email"}),
+                                        then gateAdminUser() -- same gate as the callback route,
+                                        works cross-device since verifyOtp has no PKCE
+                                        code_verifier dependency (see §12)
+    request-login                      magic link + code request, allow-list gated
+    vendors/[id]/approve, reject       service-role writes + audit_log + best-effort email
+    orders/[id]/refund                 stripe.refunds.create + order status update + audit_log +
+                                        customer notification email (added post-Phase-5-gate-test)
   dashboard/
     page.tsx                          nav hub: Vendors, Orders buttons + sign out
     vendors/                          list (status-tab filtered) + detail + approve/reject actions
     orders/                           list + detail (shows all vendor_suborders + order_items) + refund action
-  api/admin/
-    vendors/[id]/approve, reject      service-role writes + audit_log + best-effort email
-    orders/[id]/refund                stripe.refunds.create + order status update + audit_log +
-                                       customer notification email (added post-Phase-5-gate-test)
-    request-login                     magic link, allow-list gated
 lib/
   supabase/{client,server,middleware}.ts   @supabase/ssr, PKCE flow type (default)
+  admin-login-gate.ts                  2026-08-02: gateAdminUser(user) -- shared allow-list +
+                                        role-elevation check, used by both /auth/callback and
+                                        /api/admin/verify-code so the logic isn't duplicated
   require-admin.ts                    session + service-role role check -> ops_admin/ops_owner
   resend.ts                           sendEmail() helper, now uses notifications@cottomarket.com
 ```
@@ -357,17 +411,28 @@ missing, fixed during Phase 5 gate testing).
    like Resend is configured correctly, check the actual `from` address in use,
    not just "is the domain verified" — a verified domain does nothing if the
    code never references it.**
-6. **Magic link `exchange_failed`**: Supabase's PKCE flow (default in
-   `@supabase/ssr`) ties the code_verifier to the browser/tab that called
-   `signInWithOtp`. Clicking the emailed link in a *different* browser context
-   (different device, different browser, or an email app's in-app browser)
-   fails the code exchange. Not a bug — just needs the user to open the link in
-   the same browser session that requested it (or copy-paste the URL there
-   directly, which is what worked).
-7. **`admin/login` page never surfaces the callback route's `?error=...`
-   query param** — it only shows client-side form errors. This is a real (if
-   minor) UX gap still outstanding; not fixed yet, listed here so it's not
-   forgotten. Low priority.
+6. **Magic link `exchange_failed` — FIXED 2026-08-02 (see §12).** Originally
+   logged here as "not a bug — just needs the user to open the link in the
+   same browser session that requested it." That framing was wrong: it *is* a
+   real usability problem, not a one-off mistake to be careful about. Root
+   cause: Supabase's PKCE flow (default in `@supabase/ssr`) stores the
+   `code_verifier` in a cookie on whichever browser/device called
+   `signInWithOtp` — since `/api/admin/request-login` runs server-side, that
+   cookie lives on the browser that submitted the login form. Clicking the
+   emailed link from a *different* browser, device, or an email app's in-app
+   browser can never have that cookie, so the exchange always fails — no
+   amount of user care avoids it. Fixed by adding a 6-digit code as an
+   alternative sign-in path (`verifyOtp` has no code_verifier dependency, so
+   it works from any device) — see §12 for the implementation. **Lesson: when
+   a "just be careful" workaround for a recurring failure survives more than
+   one gate-test cycle, it's a sign the workaround is actually masking a real
+   architectural constraint worth fixing properly.**
+7. **`admin/login` page never surfaced the callback route's `?error=...`
+   query param — FIXED 2026-08-02 (§12).** Previously only showed client-side
+   form errors, silently dropping the actual reason a sign-in failed (e.g.
+   `exchange_failed`). Now maps each error code to a specific message,
+   including pointing the user at the 6-digit code specifically when the
+   link fails cross-device.
 
 ---
 
@@ -400,17 +465,24 @@ Feel free to reuse these for Phase 6 testing — don't recreate them.
 **Test customer profiles** (all role `customer`, no vendor of their own):
 `d3a8f420-ab51-405d-96b4-0e073066b023`, `6a6b01de-375d-40e1-8015-2ad89be52357`,
 `3f5c9e67-f3ef-4e16-b727-9017c50f99d0` ("Three" — resolves to
-`neal.weingarden@gmail.com`, careful with test emails to this one).
+`neal.weingarden@gmail.com`, careful with test emails to this one; note this
+is currently the only test/fixture customer profile with a non-null
+`profiles.full_name`, useful if you need to test anything that displays the
+customer's name, e.g. `suborder_customer_display_name` from migration 0031).
 
 **Orders**: several test orders exist in various states (`pending_payment`,
 `paid`, `refunded`) from Phase 5 smoke testing and the user's manual gate
 tests — harmless leftover data, safe to ignore or reuse, not cleaned up
 deliberately in case they're useful reference (per earlier agreement with the
-user).
+user). Also harmless: a throwaway auth user
+`cpitts1183+cottotest0802@gmail.com` (a `+alias` of the founder's real inbox)
+created 2026-08-02 to verify the email-confirmation redirect fix (§12) --
+left in place rather than chasing down the hosted service-role key again
+just to delete it.
 
 ---
 
-## 11. Phase 6 — built, pending your manual gate test
+## 11. Phase 6 — built, gate-tested except the Twilio-gated portion
 
 All four decisions were confirmed with the user before building: SMS via
 Twilio (not email-only), sent automatically with no opt-in gate; a new
@@ -519,8 +591,10 @@ Verified server-side: a signup with no metadata key leaves
 it to `true`; a fresh vendor defaults to `sms_opt_in = false`; the
 business-basics-equivalent patch flips it to `true`.
 
-**Not yet resubmitted to Twilio as of this writing.** Suggested
-`message_flow` text for the resubmission, describing this actual mechanism:
+**Resubmitted to Twilio as of 2026-08-02, awaiting approval.** The
+resubmission responded to Twilio's most recent rejection reason (sample
+messages outside the campaign's stated scope) by narrowing the sample
+messages to match the stated scope exactly. `message_flow` text used:
 *"End users consent to receive automated SMS messages via two inline
 disclosures, each shown directly below the phone number field before the
 user can proceed — customers on the profile-completion screen after signup,
@@ -534,23 +608,26 @@ any time by replying STOP."*
 **Lesson (still holds): verify a Twilio A2P 10DLC campaign's status directly
 via `GET .../Services/{sid}/Compliance/Usa2p`** — the Console can make brand
 approval look like the whole thing is done, but campaign approval is
-separate and covers actual sending. **New lesson: don't trust a
-"the page/URL exists" claim without loading it** — the Canva placeholder
-was live and had been for a while; a quick browser check would have caught
-it before the first campaign submission rather than after two rejections.
+separate and covers actual sending. **Lesson from the second rejection:
+don't trust a "the page/URL exists" claim without loading it** — the Canva
+placeholder was live and had been for a while; a quick browser check would
+have caught it before the first campaign submission rather than after two
+rejections.
 
-**Known limitation, not fixed:** the Kitchen screens don't show the
-customer's name — `profiles` RLS only allows a profile to read its own row
-(`profiles_select_own_or_admin`), so a cook can't join to the customer's
-`full_name`. Order items, fulfillment time/address, and messaging work
-regardless. If you want cooks to see a customer's first name (e.g. for
-pickup verification), that needs a deliberate, scoped RLS decision — flag it
-if you want it before Phase 6 gate-passes, otherwise it's a fine follow-up.
+**Known limitation from earlier in Phase 6 — FIXED 2026-08-02 (§12).** The
+Kitchen screens previously couldn't show the customer's name (`profiles`
+RLS only allows a profile to read its own row). Migration 0031 added a
+narrow SECURITY DEFINER lookup for this; `kitchen/[id].tsx` now displays it.
 
-**Not committed yet** — per the established workflow, this stays uncommitted
-until you gate-test and confirm. Migrations 0017/0018 and the new edge
-function are already live on the hosted project (that part can't be staged
-locally the way code can), but nothing is pushed to `main`.
+**Merge status: provisionally merged to `main` (commit `8a6fd90`).** Per the
+established workflow, Phase 6 would normally stay uncommitted until the
+gate test is confirmed -- the founder deliberately merged early (2026-07-30)
+to unblock other work while waiting on Twilio, see the note at the top of
+this doc. Everything in the gate-test walkthrough below that doesn't need
+SMS has since been independently verified or gate-tested by the founder
+(§12) -- the only thing left before Phase 6 can be considered *fully*
+closed is Twilio's campaign approval and completing the SMS-dependent steps
+below (4-7, 9).
 
 ### Gate-test walkthrough
 
@@ -569,14 +646,16 @@ this test, which is fine (self-purchase is allowed by design).
    should be there.
 4. Tap in. Confirm the item and pickup time are correct. Tap **Confirm
    order** → status flips to Confirmed. Check your email and phone for a
-   notification.
+   notification. *(SMS portion blocked on Twilio approval.)*
 5. Tap **Start preparing** → Preparing, check for a notification again.
+   *(SMS portion blocked on Twilio approval.)*
 6. Tap **Mark ready** → Ready, check for a notification. Switch to the
    Orders tab tracking screen for this same order (may need a few seconds —
-   it polls every 10s) and confirm "Ready" is now lit.
+   it polls every 10s) and confirm "Ready" is now lit. *(SMS portion blocked
+   on Twilio approval.)*
 7. Tap **Mark completed** → Completed, check for a notification. Confirm the
    order disappears from the Kitchen tab's open list and shows "Completed"
-   in Orders.
+   in Orders. *(SMS portion blocked on Twilio approval.)*
 
 **Delivery, cook side only (should stop at ready):**
 8. Repeat steps 1-2 but choose **Delivery** and confirm an address instead.
@@ -584,7 +663,8 @@ this test, which is fine (self-purchase is allowed by design).
    `ready`, confirm there is **no** "Mark completed" button — instead you
    should see "waiting in the delivery pool for a driver to claim it." On
    the customer side, the tracking timeline should stay lit through "Ready"
-   with "Driver assigned" onward greyed out.
+   with "Driver assigned" onward greyed out. *(SMS portion blocked on Twilio
+   approval.)*
 
 **Messaging:**
 10. From either suborder's Kitchen detail screen, send a message. Switch to
@@ -596,8 +676,9 @@ this test, which is fine (self-purchase is allowed by design).
     preparing) on a throwaway suborder if you want to confirm it works —
     it's built but not covered by the acceptance gate above.
 
-Once you confirm this passes, let me know and I'll prep the commit + squash
-merge (`phase 6: cook order lifecycle`) and move on to Phase 7.
+**Once Twilio approves**, re-run steps 4-7 and 9 specifically to confirm the
+SMS notifications fire, then let me know and I'll prep the commit history
+cleanup if needed + move on to Phase 7.
 
 **Phases after 6** (for context, not in scope now): 7 — Delivery onboarding +
 eligible pool, 8 — Claim/deliver/payout, 9 — Unclaimed fallback + customer
@@ -606,7 +687,94 @@ dashboard, 12 — Polish/store submission/launch readiness.
 
 ---
 
-## 12. External code review + security fixes (2026-07-17)
+## 12. Phase 6 gate-test follow-up fixes (2026-08-02)
+
+With the full gate test blocked on Twilio, this session worked through
+everything that *could* be verified/fixed independently, one item at a time.
+All code changes went through the established `fix:` branch → PR →
+`typecheck`/`lint` → server-side verification → merge workflow.
+
+**1. Email-confirmation redirect (§13 item 10) — verified, no code
+changes needed.** §13 item 10 had built the fix (an `emailRedirectTo`
+pointing signup confirmation at a new `/email-confirmed` admin page instead
+of falling back to `site_url`/admin login) but never re-verified it
+end-to-end. Triggered a real signup for a `+alias` of the founder's inbox
+(`cpitts1183+cottotest0802@gmail.com`, left in the DB as harmless leftover
+test data, see §10) and the founder confirmed the link correctly landed on
+`/email-confirmed`. Confirmed fixed.
+
+**2. Cooks couldn't see the customer's name — fixed,
+[PR #13](https://github.com/centralops-art/cotto-market/pull/13), migration
+0031.** See §4 (migration table) and §11 (known limitation, now resolved).
+`suborder_customer_display_name(so_id)` mirrors the existing
+`suborder_customer_profile_id()` pattern exactly (same
+`owns_vendor`/`is_customer_of_order`/`is_ops_admin` gate). Verified
+server-side with real sessions (via `auth.admin.generateLink` +
+`verifyOtp`, no passwords needed): the vendor owner correctly sees the real
+name; an unrelated authenticated profile calling the same RPC for the same
+suborder gets `null`.
+
+**3. Admin magic link required the same browser/device — fixed,
+[PR #14](https://github.com/centralops-art/cotto-market/pull/14).** See §9
+bug #6 for the root-cause writeup and §8 for the file layout. Summary: a
+6-digit code (`verifyOtp({type: "email"})`) was added as an alternative to
+the link, since verifying a numeric code has no PKCE `code_verifier`
+dependency and therefore works regardless of which device/browser requested
+it. Required a custom `magic_link` email template
+(`supabase/templates/magic_link.html`, wired via
+`[auth.email.template.magic_link]` in `config.toml`, pushed to hosted via
+`supabase config push`) to actually surface the code in the email — the
+default Supabase template only shows the link. Verified server-side
+(`generateLink` + `verifyOtp` with the real generated code establishes a
+session; reusing the same code afterward is correctly rejected as
+expired/invalid) and **gate-tested live by the founder**: opened the link in
+a new window, got correctly routed to the code prompt, entered the code, it
+worked, and MFA was still required afterward (confirming the code path goes
+through the same `gateAdminUser()` + MFA enforcement as the link path, not
+some parallel weaker route).
+
+**4. Vercel Preview deployments were broken — fixed (infra only, no code
+merged).** Discovered as a side effect of PR #13/#14: `cotto-market`'s
+Vercel `Preview` environment had **none** of the 5 env vars Production had
+(`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `STRIPE_SECRET_KEY`),
+so every Preview build touching the MFA pages (`/mfa/enroll`, `/mfa/verify`
+— client components that call `createClient()` at the top of the component
+body, which Next.js still executes during static prerendering even for
+`"use client"` pages) crashed with `@supabase/ssr: Your project's URL and
+API key are required`. Production wasn't affected since Production already
+had all 5 set.
+
+Fixing this took two wrong turns worth remembering:
+- First attempt copied Production's values via `vercel env pull`, but
+  Production's vars are marked **"Sensitive"** in Vercel — pulling a
+  Sensitive var back returns the literal string `[SENSITIVE]`, not the real
+  value, silently. All 5 Preview vars ended up set to that placeholder
+  garbage string until this was caught (the build failure looked identical
+  either way, which is what made it non-obvious). Real values were instead
+  sourced from `apps/mobile/.env` (Supabase URL/anon key, same hosted
+  project), a fresh `supabase projects api-keys` call (service role key),
+  and `apps/admin/.env.local` (Resend/Stripe — same accounts as production).
+- `vercel deploy --cwd <repo root>` and an earlier `vercel link --yes`
+  (without `--project`) each auto-created a stray, unwanted Vercel project
+  (`admin`, then `cotto`, named after the root `package.json`'s `"cotto"`)
+  instead of using/linking the real `cotto-market` project. The `cotto` one
+  had gotten a live GitHub integration and started posting duplicate,
+  confusing check results on PRs before it was caught. Both were deleted
+  (`vercel project rm <name>`, needs `y` piped to stdin — `--yes` and
+  `--non-interactive` don't suppress the confirmation prompt on this
+  subcommand in CLI 58.4.4). See §14 for the gotchas extracted from this.
+
+Verified via a real GitHub-triggered Preview build (not just an ad-hoc CLI
+deploy, which turned out to be misleading during debugging — see §14 gotcha
+#2) on a throwaway branch/PR, closed without merging afterward.
+
+**What's left**: nothing outstanding that doesn't require Twilio. See the
+merge-status note at the top of §11.
+
+---
+
+## 13. External code review + security fixes (2026-07-17)
 
 While waiting on Twilio's A2P 10DLC campaign review, the user had ChatGPT
 Codex review a sanitized full-codebase export (no secrets — built by
@@ -788,47 +956,36 @@ than described.
    buckets via the Storage Admin API (`storage.getBucket()` — the `storage`
    schema isn't exposed through PostgREST, so this can't be queried via
    `.from()`).
-10. **Auth hardening — done, including email confirmation (correcting an
-    earlier false alarm in this same doc).** `minimum_password_length`
-    raised 6 → 8. `auth.rate_limit.email_sent` raised from Supabase's
-    default of 2/hour to 30 (at 2/hour, this project would start silently
-    rejecting real signups/resets/magic-links after only two in the same
-    hour).
+10. **Auth hardening — done, including email confirmation.**
+    `minimum_password_length` raised 6 → 8. `auth.rate_limit.email_sent`
+    raised from Supabase's default of 2/hour to 30 (at 2/hour, this project
+    would start silently rejecting real signups/resets/magic-links after
+    only two in the same hour).
 
-    **`enable_confirmations` is now on and working — the earlier "SMTP is
-    broken" conclusion was a test-methodology bug, not a real one.** First
-    attempt: every `signUp()`/`resetPasswordForEmail()`/`signInWithOtp()`
-    call failed with a 500 `AuthRetryableFetchError` (empty body) — *every*
-    email type, not just confirmation, which was wrongly read as evidence of
-    a broken SMTP relay. Actual cause: every test used a fake
-    `@example.com` recipient, which was undeliverable and surfaced as a
-    generic 500 regardless of email type. Retested against a real address
-    (with the user's permission, a `+alias` of their own inbox) and it
-    worked cleanly first try: `signUp()` succeeded, no session (correct —
-    pending confirmation), and the confirmation email genuinely arrived and
-    the link worked.
+    **`enable_confirmations` is on and working.** First attempt: every
+    `signUp()`/`resetPasswordForEmail()`/`signInWithOtp()` call failed with
+    a 500 `AuthRetryableFetchError` (empty body) — *every* email type, not
+    just confirmation, which was wrongly read as evidence of a broken SMTP
+    relay. Actual cause: every test used a fake `@example.com` recipient,
+    which was undeliverable and surfaced as a generic 500 regardless of
+    email type. Retested against a real address (with the user's
+    permission, a `+alias` of their own inbox) and it worked cleanly first
+    try: `signUp()` succeeded, no session (correct — pending confirmation),
+    and the confirmation email genuinely arrived and the link worked.
 
     That retest *did* surface one real, separate bug: the confirmation link
     redirected to the **admin app's login page**. Cause: `signUpWithPassword()`
     never passed `emailRedirectTo`, so GoTrue fell back to `site_url`
     (`https://admin.cottomarket.com`) — correct for the admin app's own
     magic links, wrong for a mobile-app customer's signup confirmation, who
-    has no reason to land on an internal admin tool (and confirming in a
-    browser tab doesn't establish a session in the mobile app anyway — the
-    user still needs to return to the app and sign in normally, which the
-    "check your email" screen already tells them to do).
-
-    Fixed: `signUpWithPassword()` (`packages/shared/src/auth.ts`) now takes
-    an explicit `emailRedirectTo` parameter; `sign-up.tsx` passes
-    `https://admin.cottomarket.com/email-confirmed`, a new minimal public
-    page in the admin app (reuses existing hosting, no new infra) with
-    generic "you're confirmed, return to the app" copy. The URL (plus
-    `127.0.0.1:3000`/`localhost:3000` variants for local dev) was added to
-    `additional_redirect_urls` and pushed. **Not yet re-verified end-to-end
-    with the corrected redirect** — the fix is built and the URL is
-    allow-listed, but confirming the *link itself* now lands on the new page
-    (rather than admin login) needs one more real signup attempt, which
-    wasn't re-tested after this specific fix landed.
+    has no reason to land on an internal admin tool. Fixed:
+    `signUpWithPassword()` (`packages/shared/src/auth.ts`) now takes an
+    explicit `emailRedirectTo` parameter; `sign-up.tsx` passes
+    `https://admin.cottomarket.com/email-confirmed`, a minimal public page
+    in the admin app with generic "you're confirmed, return to the app"
+    copy. **Re-verified end-to-end 2026-08-02 (§12 item 1)**: a real signup's
+    confirmation link correctly lands on `/email-confirmed`, confirmed by
+    the founder.
 
     **Admin MFA — done (project confirmed on Supabase Pro).** TOTP enabled
     via `[auth.mfa.totp] enroll_enabled/verify_enabled = true`, pushed live.
@@ -857,11 +1014,14 @@ than described.
       already-enrolled user starts back at AAL1 (proving the step-up
       challenge actually re-fires every session, not just once ever) — a
       wrong code is rejected (`"Invalid TOTP code entered"`), and a correct
-      code on a fresh challenge reaches AAL2 again.
+      code on a fresh challenge reaches AAL2 again. **Re-confirmed live by
+      the founder 2026-08-02** during the §12 item 3 gate test (MFA was
+      still required after signing in via the new 6-digit-code path).
     - **CAPTCHA: explicitly deferred to post-V1** (user's call — needs an
       hCaptcha/Turnstile account, and the team decided not to add one for
       V1). `[auth.captcha]` stays disabled; revisit before a real public
-      launch if bot signups become a problem.
+      launch if bot signups become a problem. This is the only intentionally
+      unaddressed item from this review — not a bug, a deferred decision.
 11. **`seed.sql` — now fixed.** The three real admin emails
     (`CentralOps@CottoMarket.com`, `Neal.Weingarden@gmail.com`,
     `CPITTS1183@gmail.com`) are replaced with placeholders
@@ -876,12 +1036,9 @@ than described.
     if ever wanted).
 
 All items from the external code review are now addressed except CAPTCHA
-and admin MFA (both blocked on the user's input) and the SMTP/confirmation-
-email issue discovered above (needs its own investigation, likely starting
-with checking Resend's dashboard for delivery failures/domain issues around
-the specific template GoTrue uses for confirmation emails).
+(explicitly deferred to post-V1, the user's own decision, not an open bug).
 
-## 13. Useful commands reference
+## 14. Useful commands reference
 
 ```bash
 # typecheck/lint/test everything
@@ -922,3 +1079,33 @@ Verification throughout this project has instead relied on: `pnpm typecheck`/
 `lint`/`test`, throwaway Node smoke-test scripts against the hosted Supabase +
 Stripe test mode (always deleted after use, never committed), and the user's
 own manual device testing.
+
+**Vercel CLI gotchas (learned the hard way 2026-08-02, see §12 item 4)**:
+1. **Always pass `--project cotto-market` on first link, or link from
+   `apps/admin` where a `.vercel/project.json` might already exist** — a
+   bare `vercel link --yes` (no `--project`) or running any `vercel deploy`
+   with `--cwd` pointed somewhere not yet linked will silently auto-create a
+   **new** project named after the nearest `package.json`'s `"name"` field
+   (root is `"cotto"`, `apps/admin` is `"admin"`) instead of linking the
+   real `cotto-market` project. Check `npx vercel project ls` if a project
+   name in output ever looks unfamiliar. Deleting a wrongly-created project:
+   `vercel project rm <name>` prompts for confirmation regardless of `--yes`
+   / `--non-interactive` (CLI 58.4.4) — pipe `echo "y" |` into it.
+2. **An ad-hoc `vercel deploy` from the CLI is not a reliable proxy for
+   what a real GitHub-triggered Preview build will do**, especially in a
+   monorepo with a `--cwd` pointed at the repo root — it can end up building
+   against a different/wrongly-linked project (see gotcha #1) with
+   completely different env vars, giving misleading "still broken" results.
+   To actually verify a Preview-environment fix, push a real commit to a
+   throwaway branch/PR and check `gh pr checks`, not a local `vercel
+   deploy`.
+3. **Env vars added via `vercel env add` default to "Sensitive"** as of CLI
+   58.4.4, meaning `vercel env pull` (and the dashboard) can never read the
+   real value back afterward — pulling a Sensitive var returns the literal
+   string `[SENSITIVE]`. This matters most for `NEXT_PUBLIC_*` vars if you
+   ever need to copy them between environments: don't pull-then-copy, get
+   the real value from its actual source (a `.env` file, a fresh CLI/API
+   call to the underlying service) every time. `--no-sensitive` on `env add`
+   stores it in a way that can be read back later, if that's ever needed
+   (in the end this project didn't need it — sensitivity turned out to be
+   unrelated to the actual build failure, see §12 item 4).
