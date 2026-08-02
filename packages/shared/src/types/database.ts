@@ -1267,6 +1267,10 @@ export type Database = {
         Returns: boolean
       }
       owns_vendor: { Args: { target_vendor_id: string }; Returns: boolean }
+      suborder_customer_display_name: {
+        Args: { so_id: string }
+        Returns: string
+      }
       suborder_customer_profile_id: { Args: { so_id: string }; Returns: string }
     }
     Enums: {

@@ -41,6 +41,16 @@ export default function KitchenSuborderDetail() {
     },
   });
 
+  const customerNameQuery = useQuery({
+    queryKey: ["suborder_customer_display_name", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("suborder_customer_display_name", { so_id: id! });
+      if (error) throw error;
+      return data as string | null;
+    },
+  });
+
   const transition = useMutation({
     mutationFn: async (newStatus: string) => {
       const { data, error } = await supabase.functions.invoke("update-suborder-status", {
@@ -79,6 +89,7 @@ export default function KitchenSuborderDetail() {
       </Pressable>
 
       <Text className="text-2xl font-bold text-white">{suborder.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
+      {customerNameQuery.data && <Text className="text-white/60">Customer: {customerNameQuery.data}</Text>}
       <Text className="text-white/60">Status: {suborder.status}</Text>
 
       {suborder.fulfillment === "pickup" && suborder.pickup_at && (
