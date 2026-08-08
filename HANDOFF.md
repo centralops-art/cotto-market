@@ -1,16 +1,16 @@
-# Cotto Marketplace — Handoff (Phase 6 complete, ready for Phase 7)
+# Cotto Marketplace — Handoff (Phase 7 built, awaiting the founder's gate test)
 
-Last updated: 2026-08-08. `main` is at commit `50e30f8` — Phase 6 (cook order
-lifecycle, external security review fixes, auth hardening) is merged and
-**fully gate-tested, including SMS.** Twilio approved the resubmitted A2P
-10DLC campaign as of 2026-08-08; see §15 for the close-out session (server-side
-Twilio smoke test + the founder's full hands-on gate-test walkthrough, both
-passed). Phase 6 is no longer a provisional merge — it's done.
+Last updated: 2026-08-08. Phase 6 (cook order lifecycle) is merged and fully
+gate-tested (§15). Phase 7 (delivery onboarding + pool) is **built and
+independently verified** (typecheck/lint/test + 12 server-side smoke tests,
+all passing — §16) but **not yet gate-tested by the founder**. Per this
+project's established workflow (§1), Phase 7 stays open until that hands-on
+walkthrough passes.
 
-This doc is meant to let a fresh Claude Code session pick up Phase 7 cleanly
-with zero re-discovery. Read this fully before touching code. (§11/§12 are
-kept as-is for historical record of how Phase 6 was built and verified; §15
-has the final close-out.)
+This doc is meant to let a fresh Claude Code session pick up cleanly with
+zero re-discovery. Read this fully before touching code. (§11/§12 are kept
+as-is for historical record of how Phase 6 was built and verified; §15 has
+its final close-out; §16 has Phase 7.)
 
 ---
 
@@ -135,6 +135,10 @@ it's tested via Expo dev client + EAS builds.
 | 0021-0029 | **Security fixes from external code review — see §13 for full detail.** 0021: vendor/delivery-profile self-approval guard (`BEFORE INSERT`). 0022: `cart_items` price/vendor integrity (`sync_cart_item_price()`). 0023: reviews require a completed order, messages require the real counterpart. 0024: guest carts moved to Supabase Anonymous Sign-Ins, dropped `carts.session_id`, `profile_id` now `NOT NULL`. 0025: `is_order_paid()` gates vendor suborder visibility/updates. 0026: `vendor_suborders.stripe_transfer_reversal_id` for refund reconciliation. 0027: `orders_cart_id_pending_unique` partial index (checkout idempotency). 0028: `processed_stripe_events` table (webhook idempotency). 0029: storage bucket file-size/MIME limits. |
 | 0030 | Phase 6 (third SMS-consent iteration): `vendors.sms_opt_in`, mirrors `profiles.sms_opt_in` for the business-basics onboarding step. See §13. |
 | 0031 | **2026-08-02 gate-test follow-up (§12):** `suborder_customer_display_name(so_id)` SECURITY DEFINER function — same gate as `suborder_customer_profile_id` (0018), returns the customer's `full_name` instead of just their profile id. Lets Kitchen screens show who placed the order. |
+| 0032 | Phase 7: private `drivers-licenses` storage bucket (10MiB, image/jpeg\|png\|webp + application/pdf) + owner/admin RLS policies, mirrors `cfpm-certs` (0013) but with the size/MIME limits folded in at creation instead of a follow-up migration. |
+| 0033 | Phase 7: `vendor_delivery_profiles.drivers_license_expiry_warned_at` — mirrors `vendors.cfpm_expiry_warned_at` (0012), lets the new expiry cron avoid re-warning admins every day. |
+| 0034 | Phase 7: daily `pg_cron` schedule for `cron-driver-license-expiry-check`, mirrors `0014_cfpm_expiry_cron.sql` exactly, offset 15 min after the CFPM job. |
+| 0035 | Phase 7: `pool_suborder_customer_first_name(so_id)` SECURITY DEFINER function — gated on `can_view_pool_suborder` (not `owns_vendor`/`is_customer_of_order` like 0018/0031), returns only `split_part(full_name, ' ', 1)`. A pool-viewing driver hasn't claimed anything yet, so they see less than a cook/driver who has (spec 3.6: "customer first name only"). |
 
 **RLS pattern for orders/suborders/order_items**: written *only* by service-role
 edge functions (checkout function creates them as `pending_payment`; webhook
@@ -169,6 +173,7 @@ changes hosted schema, or `apps/mobile`/`apps/admin` typecheck will drift.
 | `checkout-create-payment-intent` | Computes subtotal/delivery fee (Mapbox)/platform fee/Stripe Tax per vendor, writes `orders`+`vendor_suborders`+`order_items` as `pending_payment`, creates the platform PaymentIntent | anon+JWT (caller's own cart) |
 | `stripe-webhook` | Verifies Stripe signature, idempotent on `orders.status`, fires per-vendor Transfers, flips order→paid + cart→checked_out, sends emails | **no JWT verification** (`--no-verify-jwt`, Stripe calls it directly with its own signature) |
 | `update-suborder-status` (Phase 6) | Cook-driven suborder status transitions. Body `{suborderId, newStatus}`, `newStatus` ∈ confirmed/preparing/ready/completed/cancelled. Verifies caller owns the vendor, performs the update (still independently gated by migration 0017's trigger), writes `audit_log`, sends best-effort email (Resend) + SMS (Twilio) to the customer. | anon+JWT (caller's own vendor) |
+| `cron-driver-license-expiry-check` (Phase 7) | pg_cron-triggered (0034); auto-suspends `vendor_delivery_profiles` (`delivery_active` → `delivery_suspended`) whose license expired, 60-day admin warning digest email. Direct field-substituted mirror of `cron-cfpm-expiry-check`. | service-role (cron) |
 
 **Important Deno quirk**: edge functions do **not** import from
 `packages/shared` — that package's TypeScript uses extensionless relative
@@ -1152,6 +1157,170 @@ established convention (phase commit, then separate `fix:`-prefixed PRs for
 gate-test follow-ups, never bundled into the phase branch) — there is no
 irregular or squash-worthy history here, so no rebase/rewrite is needed.
 
-**Next**: Phase 7 (Delivery onboarding + eligible pool) has not been started
-or planned yet — do not begin scoping or building it until the founder
-explicitly says to proceed.
+**Next**: Phase 7 (Delivery onboarding + eligible pool) — see §16.
+
+---
+
+## 16. Phase 7 — Delivery onboarding + pool (2026-08-08, built, awaiting founder gate test)
+
+Scope per `Cotto_MVP_Spec.md`'s phase table: the wizard that lets an
+already-approved cook vendor also become a delivery driver, admin review of
+that application, and a **read-only** view of the regional delivery job
+pool. Claim/deliver/payout is Phase 8, explicitly out of scope here.
+
+Three decisions confirmed with the founder before building:
+1. Scope stops at the read-only pool view — no working Claim button, no My
+   Queue, no History (Phase 8's race-safe claim RPC).
+2. Distance uses **live device GPS** (not the vendor's registered address) —
+   `expo-location` is a new dependency, installed via `npx expo install
+   expo-location` (not `pnpm add`, per §9 bug #3's lesson).
+3. Pool updates via polling (~10s, matching `kitchen.tsx`/`orders.tsx`), not
+   Supabase Realtime.
+
+**What shipped:**
+1. Migrations 0032–0035 (see §4) — private `drivers-licenses` storage
+   bucket, an expiry-tracking column, the license-expiry cron schedule, and
+   `pool_suborder_customer_first_name()`. `vendor_delivery_profiles`
+   (migration 0003) and its self-approval guard triggers (0010, 0021) and
+   the pool-visibility function `can_view_pool_suborder()` (0010) already
+   existed from earlier phases and needed **no changes** — direct read
+   confirmed `can_view_pool_suborder` already correctly requires
+   `on_duty = true` and `status = 'delivery_active'` and excludes
+   already-claimed suborders.
+2. Edge function `cron-driver-license-expiry-check` (see §5).
+3. `packages/shared/src/delivery-onboarding.ts` — `VEHICLE_TYPES`,
+   `VEHICLE_TYPE_LABELS`, `DELIVERY_RADIUS_OPTIONS`, `Availability` type +
+   per-step zod schemas, mirroring `vendor-onboarding.ts`'s pattern.
+4. Mobile: `delivery-onboarding.tsx` wizard (6 steps in
+   `src/features/delivery-onboarding/`: license upload front+back, vehicle
+   type, insurance attestation, agreement acceptance, radius, weekly
+   availability), a "Become a Delivery Partner" CTA on `account.tsx`
+   (gated on an already-`active` cook vendor), a new gated "Deliveries" tab
+   (`(tabs)/_layout.tsx`, visible only once `vendor_delivery_profiles.status
+   === 'delivery_active'`), and `(tabs)/deliveries.tsx` — the Available pool
+   screen: an on-duty toggle (in scope — it's eligibility state, not the
+   Phase 8 claim action, and without it the pool is permanently empty since
+   `on_duty` defaults `false`), GPS permission flow with a non-crashing
+   denied-state fallback, a 10s-polling pool query, straight-line (haversine,
+   `src/lib/geo.ts`) distances rather than a Mapbox Directions call per card
+   per poll, and an estimated payout via the existing (already-tested,
+   previously-uncalled) `calculateDeliverySplit` from `packages/shared/src/fees.ts`.
+5. Admin: `vendors` list now joins `vendor_delivery_profiles(status)` for a
+   second status badge; vendor detail page shows both license images (signed
+   URLs, same pattern as the CFPM cert), vehicle/radius/availability/attestation
+   fields, and Approve/Reject buttons; new routes
+   `api/admin/vendor-delivery-profiles/[id]/approve` and `.../reject`, direct
+   mirrors of the existing vendor approve/reject routes. **Reject sets status
+   back to `not_started`** (not `delivery_suspended`) — this deliberately
+   mirrors the vendor route's actual behavior (`status: 'draft'` on reject),
+   confirmed by reading that route's source rather than assumed.
+   `delivery_suspended` is reserved for post-approval suspension (the
+   license-expiry cron, or a future manual admin action).
+
+**New function not in the original spec scaffolding:**
+`pool_suborder_customer_first_name(so_id)` (migration 0035). The existing
+`suborder_customer_display_name()` (0031) returns the customer's *full* name
+but is gated on `owns_vendor OR is_customer_of_order OR is_ops_admin` — it
+doesn't cover a driver who can merely see the pool. Spec 3.6 also wants
+"customer first name only" pre-claim, deliberately less than what a cook
+sees. Widening 0031's function instead would have leaked every ready
+delivery order's customer's full name to every on-duty vendor in the
+region, not just whoever ends up claiming it — so this is a narrow,
+purpose-built function instead.
+
+**Verified this session (server-side, throwaway-fixture discipline, same as
+every prior phase — service-role client, insert/delete, deleted immediately
+after, confirmed clean via `git status`):**
+- Non-admin INSERT into `vendor_delivery_profiles` with `status:'delivery_active'`
+  in the payload lands as `not_started` (`guard_delivery_profile_owner_insert`).
+- Non-admin UPDATE attempting to self-approve (`status:'delivery_active'`
+  directly) is rejected (`guard_delivery_profile_owner_update`).
+- Non-admin UPDATE to `status:'delivery_pending_review'` with all six wizard
+  fields succeeds.
+- Service-role approve → `delivery_active`; reject → `not_started` +
+  `rejected_reason`.
+- An on-duty `delivery_active` driver in the cooking vendor's region sees a
+  `ready` delivery suborder in the pool; flipping `on_duty` to `false` hides
+  it immediately.
+- `pool_suborder_customer_first_name` returns the real first name for the
+  eligible driver and `null` for an unrelated profile.
+- `cron-driver-license-expiry-check` auto-suspends a fixture with a
+  backdated `drivers_license_expires_on` (`delivery_active` →
+  `delivery_suspended`) and writes the expected `audit_log` row.
+- Storage RLS rejects an authenticated user's upload attempt into another
+  user's `drivers-licenses/{profile_id}/...` folder.
+
+All 12 checks passed. `pnpm typecheck && pnpm lint && pnpm test` also pass
+across all three workspaces, including new unit coverage for the new
+`haversineMiles` helper (`apps/mobile/src/lib/geo.test.ts`).
+
+**Not independently re-verified this session** (visually confirmed correct
+by direct file read instead, not worth the setup cost of a live empirical
+test): cross-region pool invisibility — `can_view_pool_suborder`'s
+`driver_vendor.region_id = cooking_vendor.region_id` clause is a simple,
+directly-readable one-line predicate, and this project has only one active
+region seeded, so testing it live would require standing up a second
+throwaway region + vendor + session just for this one assertion.
+
+**Not verified at all this session** (needs a real device — Deno/Node smoke
+tests can't grant OS location permission, take a photo, or render RN
+components): the mobile UI itself. The admin app's new UI also wasn't
+browser-previewed — `apps/admin/.env.local` points at **local** Supabase
+(`http://127.0.0.1:54321`), which requires `supabase start`/Docker, and
+Docker wasn't running this session (confirmed by a `WARNING: Docker is not
+running` message during an unrelated CLI call). Same established
+limitation as every prior phase (§14): this project relies on
+typecheck/lint/test + throwaway server-side smoke tests + the founder's own
+device/browser testing, not this environment's browser preview tooling.
+
+### Gate-test walkthrough
+
+Sign in as `CPITTS1183@gmail.com` (owns **Tester Kitchen**, `active` status)
+on mobile, and as an admin allow-list account in the admin app.
+
+1. On mobile, Account tab → confirm **"Become a Delivery Partner"** appears
+   (only shows once your cook vendor is `active`); tap it.
+2. Walk all 6 wizard steps in order (License → Vehicle → Insurance →
+   Agreement → Radius → Availability). Confirm Back/Next both work and
+   progress survives an app restart mid-wizard (it re-reads the DB row, not
+   local state).
+3. Upload real front/back license photos on-device; confirm both preview
+   correctly before moving on.
+4. Submit the final step; confirm the app returns to Account and the
+   "Continue Delivery Application" button is gone (replaced by "pending
+   review" text) — the wizard should redirect away if you try to navigate
+   back into it.
+5. In the admin app, open Vendors → your vendor → confirm a second
+   ("delivery pending review") badge appears in the list and on the detail
+   page; confirm both license images render, and vehicle type/radius/
+   availability/attestation timestamps all show the values you entered.
+6. Reject once with a reason; confirm on mobile that Account shows the
+   rejection reason and "Continue Delivery Application" reappears (you're
+   back at `not_started`, not a dead end).
+7. Resubmit and Approve this time; confirm the approval email arrives and
+   the **"Deliveries"** tab appears in the mobile bottom tab bar.
+8. Open Deliveries; grant location permission when prompted; flip **Delivery
+   Mode ON**. With at least one `ready` delivery suborder from a *different*
+   vendor sitting in the pool (you may need me to seed one via a throwaway
+   fixture, same as always, if there's no real one to test against — cannot
+   be your own Tester Kitchen order, self-claim is blocked), confirm it
+   appears: vendor name, both distances, an estimated payout in dollars, and
+   the customer's first name only (not full name).
+9. Deny location permission (fresh install, or reset the permission in OS
+   settings) and reopen Deliveries; confirm a clear, non-crashing empty
+   state appears with a working "Try again" button, not a blank screen or
+   crash.
+10. With Delivery Mode still ON and location granted, confirm the list
+    auto-refreshes roughly every 10 seconds without a manual pull (ask me to
+    add/remove a fixture suborder server-side mid-test and watch it
+    appear/disappear).
+11. Flip **Delivery Mode OFF**; confirm the pool list immediately goes
+    empty.
+12. (Optional, needs a throwaway fixture) Backdate a test profile's license
+    expiry and have me manually invoke the cron function; confirm the
+    profile flips to suspended and the Deliveries tab disappears on next
+    app foreground.
+
+**Once the founder confirms the gate passed**, this phase can be squash-merged
+per the established `phase N: <description>` convention, and Phase 8
+(claim → deliver → payout) can be scoped.

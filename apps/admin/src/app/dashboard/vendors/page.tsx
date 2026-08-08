@@ -21,7 +21,7 @@ export default async function VendorsPage({
 
   let query = admin.service
     .from("vendors")
-    .select("id, storefront_name, status, created_at, vendor_types")
+    .select("id, storefront_name, status, created_at, vendor_types, vendor_delivery_profiles(status)")
     .order("created_at", { ascending: false });
   if (activeTab !== "all") query = query.eq("status", activeTab);
   const { data: vendors } = await query;
@@ -60,7 +60,12 @@ export default async function VendorsPage({
                 <p className="font-medium">{vendor.storefront_name}</p>
                 <p className="text-sm text-muted-foreground">{vendor.vendor_types?.join(", ") || "No type set"}</p>
               </div>
-              <StatusBadge status={vendor.status} />
+              <div className="flex items-center gap-2">
+                <StatusBadge status={vendor.status} />
+                {vendor.vendor_delivery_profiles?.status && vendor.vendor_delivery_profiles.status !== "not_started" && (
+                  <StatusBadge status={vendor.vendor_delivery_profiles.status} />
+                )}
+              </div>
             </Link>
           ))
         ) : (

@@ -23,6 +23,26 @@ export default function TabsLayout() {
   });
   const showKitchenTab = activeVendorQuery.data?.status === "active";
 
+  // Deliveries tab only shows once the vendor's delivery-partner application
+  // has been approved. Embedded select through vendors -> vendor_delivery_profiles
+  // (same nested-select idiom already used elsewhere, e.g. use-cart.ts's
+  // menu_items(..., vendors(...))). Own query key, per this codebase's rule
+  // that every distinct select() shape needs its own key.
+  const deliveryStatusQuery = useQuery({
+    queryKey: ["delivery_status_for_tabs", session?.user.id],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vendors")
+        .select("id, vendor_delivery_profiles(status)")
+        .eq("owner_profile_id", session!.user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const showDeliveriesTab = deliveryStatusQuery.data?.vendor_delivery_profiles?.status === "delivery_active";
+
   return (
     <Tabs
       screenOptions={{
@@ -37,6 +57,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="favorites" options={{ title: "Favorites" }} />
       <Tabs.Screen name="cart" options={{ title: "Cart" }} />
       <Tabs.Screen name="kitchen" options={{ title: "Kitchen", href: showKitchenTab ? undefined : null }} />
+      <Tabs.Screen name="deliveries" options={{ title: "Deliveries", href: showDeliveriesTab ? undefined : null }} />
       <Tabs.Screen name="account" options={{ title: "Account" }} />
     </Tabs>
   );
