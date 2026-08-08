@@ -34,6 +34,22 @@ export default function Account() {
     },
   });
 
+  // Own key -- a different select() shape on vendor_delivery_profiles used
+  // elsewhere (e.g. the tab-gating query) must not share this key.
+  const deliveryProfileQuery = useQuery({
+    queryKey: ["delivery_profile_for_cta", vendorQuery.data?.id],
+    enabled: !!vendorQuery.data,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vendor_delivery_profiles")
+        .select("status, rejected_reason")
+        .eq("vendor_id", vendorQuery.data!.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const becomeVendor = useMutation({
     mutationFn: async () => {
       if (!profile) {
@@ -63,6 +79,22 @@ export default function Account() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["vendor", session?.user.id] });
       router.push("/(app)/vendor-onboarding");
+    },
+  });
+
+  const becomeDeliveryPartner = useMutation({
+    mutationFn: async () => {
+      if (!vendor) throw new Error("Become a cook vendor first.");
+      // Starts as 'not_started' (table default, also force-set by the
+      // guard_delivery_profile_owner_insert trigger regardless of payload) --
+      // the delivery-onboarding wizard fills in the rest and self-submits to
+      // 'delivery_pending_review' when complete.
+      const { error } = await supabase.from("vendor_delivery_profiles").insert({ vendor_id: vendor.id });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["delivery_profile_for_cta", vendor?.id] });
+      router.push("/(app)/delivery-onboarding");
     },
   });
 
@@ -140,6 +172,52 @@ export default function Account() {
         </Pressable>
       )}
       {becomeVendor.isError && <Text className="text-red-400">{(becomeVendor.error as Error).message}</Text>}
+
+      {vendor?.status === "active" && (
+        <View className="mt-4 gap-2">
+          <Text className="text-lg font-semibold text-white">Delivery Partner</Text>
+          {deliveryProfileQuery.isLoading ? (
+            <ActivityIndicator color="#D96A3E" />
+          ) : !deliveryProfileQuery.data ? (
+            <Pressable
+              className="items-center rounded-lg border border-cotto-accent py-3 disabled:opacity-50"
+              disabled={becomeDeliveryPartner.isPending}
+              onPress={() => becomeDeliveryPartner.mutate()}
+            >
+              {becomeDeliveryPartner.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="font-semibold text-cotto-accent">Become a Delivery Partner</Text>
+              )}
+            </Pressable>
+          ) : deliveryProfileQuery.data.status === "not_started" ? (
+            <>
+              {/* A rejected application also lands back at 'not_started' with
+                  rejected_reason set (mirrors the vendor reject flow's
+                  status: 'draft'), so it can be resubmitted -- surface the
+                  reason here if present. */}
+              {deliveryProfileQuery.data.rejected_reason && (
+                <Text className="text-red-400">Application not approved: {deliveryProfileQuery.data.rejected_reason}</Text>
+              )}
+              <Pressable
+                className="items-center rounded-lg border border-cotto-accent py-3"
+                onPress={() => router.push("/(app)/delivery-onboarding")}
+              >
+                <Text className="font-semibold text-cotto-accent">Continue Delivery Application</Text>
+              </Pressable>
+            </>
+          ) : deliveryProfileQuery.data.status === "delivery_pending_review" ? (
+            <Text className="text-white/80">Delivery application pending review.</Text>
+          ) : deliveryProfileQuery.data.status === "delivery_suspended" ? (
+            <Text className="text-red-400">Delivery partner account suspended. Contact Central Ops for details.</Text>
+          ) : (
+            <Text className="text-white/80">Delivery Partner: Active</Text>
+          )}
+          {becomeDeliveryPartner.isError && (
+            <Text className="text-red-400">{(becomeDeliveryPartner.error as Error).message}</Text>
+          )}
+        </View>
+      )}
 
       <View className="mt-6 flex-row items-start gap-3 rounded-lg bg-white/5 p-4">
         <Switch

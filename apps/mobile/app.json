@@ -22,11 +22,20 @@
         {
           "merchantIdentifier": "merchant.market.cotto.app"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Cotto uses your location to show delivery distances while you're on duty in the Deliveries tab."
+        }
       ]
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "market.cotto.app"
+      "bundleIdentifier": "market.cotto.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Cotto uses your location to show delivery distances while you're on duty in the Deliveries tab."
+      }
     },
     "android": {
       "package": "market.cotto.app",
