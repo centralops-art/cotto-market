@@ -1,19 +1,16 @@
-# Cotto Marketplace — Handoff (Phase 6 built + verified except Twilio-gated SMS)
+# Cotto Marketplace — Handoff (Phase 6 complete, ready for Phase 7)
 
-Last updated: 2026-08-02. `main` is at commit `8a6fd90` — Phase 6 (cook order
-lifecycle, external security review fixes, auth hardening) is merged, plus
-three Phase 6 gate-test follow-up fixes from this session (§12). This is a
-**provisional merge**: the founder pushed Phase 6 to `main` on 2026-07-30 to
-let other work continue while waiting on Twilio's A2P 10DLC campaign review
-(response times have been inconsistent), *before* the full gate-test
-walkthrough in §11 could be completed — SMS notifications can't be verified
-until Twilio approves the resubmitted campaign. Everything in the Phase 6
-gate-test walkthrough that does **not** depend on SMS/Twilio has since been
-verified. §12 documents exactly what was checked and fixed this session.
+Last updated: 2026-08-08. `main` is at commit `50e30f8` — Phase 6 (cook order
+lifecycle, external security review fixes, auth hardening) is merged and
+**fully gate-tested, including SMS.** Twilio approved the resubmitted A2P
+10DLC campaign as of 2026-08-08; see §15 for the close-out session (server-side
+Twilio smoke test + the founder's full hands-on gate-test walkthrough, both
+passed). Phase 6 is no longer a provisional merge — it's done.
 
-This doc is meant to let a fresh Claude Code session pick up once Twilio
-approves — to close out the Phase 6 gate test and start Phase 7 cleanly —
-with zero re-discovery. Read this fully before touching code.
+This doc is meant to let a fresh Claude Code session pick up Phase 7 cleanly
+with zero re-discovery. Read this fully before touching code. (§11/§12 are
+kept as-is for historical record of how Phase 6 was built and verified; §15
+has the final close-out.)
 
 ---
 
@@ -619,15 +616,14 @@ Kitchen screens previously couldn't show the customer's name (`profiles`
 RLS only allows a profile to read its own row). Migration 0031 added a
 narrow SECURITY DEFINER lookup for this; `kitchen/[id].tsx` now displays it.
 
-**Merge status: provisionally merged to `main` (commit `8a6fd90`).** Per the
-established workflow, Phase 6 would normally stay uncommitted until the
-gate test is confirmed -- the founder deliberately merged early (2026-07-30)
-to unblock other work while waiting on Twilio, see the note at the top of
-this doc. Everything in the gate-test walkthrough below that doesn't need
-SMS has since been independently verified or gate-tested by the founder
-(§12) -- the only thing left before Phase 6 can be considered *fully*
-closed is Twilio's campaign approval and completing the SMS-dependent steps
-below (4-7, 9).
+**Merge status: fully closed as of 2026-08-08 -- see §15.** This subsection
+is kept as historical record of the provisional-merge period: Phase 6 was
+merged early to `main` (commit `8a6fd90`, 2026-07-30) to unblock other work
+while waiting on Twilio's A2P 10DLC campaign review, before the gate test
+in §11 could be fully completed. Everything not needing SMS was verified
+during that period (§12); the SMS-dependent steps below (4-7, 9) were
+blocked until Twilio's approval, which landed 2026-08-08 -- §15 has the
+close-out verification.
 
 ### Gate-test walkthrough
 
@@ -769,8 +765,8 @@ Verified via a real GitHub-triggered Preview build (not just an ad-hoc CLI
 deploy, which turned out to be misleading during debugging — see §14 gotcha
 #2) on a throwaway branch/PR, closed without merging afterward.
 
-**What's left**: nothing outstanding that doesn't require Twilio. See the
-merge-status note at the top of §11.
+**What's left**: nothing — the Twilio-dependent items were closed out
+2026-08-08, see §15.
 
 ---
 
@@ -1109,3 +1105,53 @@ own manual device testing.
    stores it in a way that can be read back later, if that's ever needed
    (in the end this project didn't need it — sensitivity turned out to be
    unrelated to the actual build failure, see §12 item 4).
+
+---
+
+## 15. Phase 6 close-out — Twilio approved, full gate test passed (2026-08-08)
+
+Twilio approved the resubmitted A2P 10DLC campaign (the third resubmission,
+see §11's history of rejections). This session closed out the only remaining
+open item from §11/§12.
+
+**1. Server-side Twilio smoke test (Claude, before the founder's own
+walkthrough).** Same throwaway-fixture discipline as every other
+server-side verification in this project: inserted a paid `orders` row +
+`vendor_suborders` row (pickup, `received`) + `order_items` row directly via
+service role, for the founder's own profile against Tester Kitchen (self-
+purchase, allowed by design) — no real checkout/Stripe flow needed since the
+fixture starts already `paid`. Established a real session for the founder's
+account via `auth.admin.generateLink` + `verifyOtp` (same no-password pattern
+used in §12 item 3), then called `update-suborder-status` for real to
+transition `received → confirmed`. Edge function returned `200 ok: true`,
+**zero rows** logged to `audit_log` matching `suborder_notify_%_failed` —
+both the Resend and Twilio calls returned `res.ok`. Fixture (order,
+suborder, order_item, audit_log rows) deleted immediately after; confirmed
+clean via `git status` (no tracked files touched — this was pure hosted-DB
+fixture data, same as every prior throwaway verification in this project).
+**The founder independently confirmed the SMS text actually arrived** —
+important because a clean Twilio API response only means the carrier
+accepted the message, not that A2P filtering didn't silently drop it
+afterward.
+
+**2. Founder's full hands-on gate-test walkthrough (§11) — passed.**
+Re-ran steps 4-7 and 9 (the SMS-dependent notification checks) on-device;
+SMS confirmed received at every notifiable transition (confirmed, preparing,
+ready, completed, and the delivery-side received→ready sequence). Also
+independently exercised the checkout screen's Cancel affordance (the
+"Cancel" link under the "Pay now" button on `checkout.tsx`) — confirmed
+working, separate from the Kitchen `[id].tsx` "Cancel order" button covered
+by walkthrough step 11.
+
+**Phase 6 is now fully closed.** Every item in §11's acceptance gate has
+been verified — either server-side by Claude or hands-on by the founder.
+No code changes were needed this session; this was verification-only. The
+existing commit history (`4666edc` phase 6 squash-merge → `ec3acfb`/`8a6fd90`
+follow-up `fix:` PRs → `50e30f8` docs update) already matches this project's
+established convention (phase commit, then separate `fix:`-prefixed PRs for
+gate-test follow-ups, never bundled into the phase branch) — there is no
+irregular or squash-worthy history here, so no rebase/rewrite is needed.
+
+**Next**: Phase 7 (Delivery onboarding + eligible pool) has not been started
+or planned yet — do not begin scoping or building it until the founder
+explicitly says to proceed.
