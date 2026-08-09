@@ -1,18 +1,16 @@
-# Cotto Marketplace — Handoff (Phase 9 built + fully gate-tested, PR #18 open)
+# Cotto Marketplace — Handoff (Phase 9 merged, Phase 10 next)
 
-Last updated: 2026-08-09. Phase 6, 7, and 8 are all merged to `main` and
-fully gate-tested (§15, §16, §18 — §18 records PR #17's merge, which had
-been left open at the top of this doc in error; it merged same-day).
-Phase 9 (unclaimed delivery fallback: T1/T2/T3) is **built,
-independently verified server-side (26/26 checks, including real Stripe
-test-mode money movement), and now fully gate-tested by the founder** —
-all 7 acceptance-gate steps passed, including a live cross-check that a
-real driver claim beats a pending customer offer. Four real bugs surfaced
-during the walkthrough and are already fixed on the PR branch (illegible
-suborder UUIDs in four separate emails, a swallowed error message, and a
-missing delivery-address display — see §19's gate test results). **PR #18
-is open on `phase-9-unclaimed-delivery-fallback`, not yet merged to
-`main`.**
+Last updated: 2026-08-09. Phases 6, 7, 8, and 9 are all merged to `main`
+and fully gate-tested (§15, §16, §18, §19). Phase 9 (unclaimed delivery
+fallback: T1/T2/T3) squash-merged as commit `3bc9903` — all 7
+acceptance-gate steps passed, including a live cross-check that a real
+driver claim beats a pending customer offer. Four real bugs surfaced
+during the walkthrough and were fixed before merge (illegible suborder
+UUIDs in four separate emails, a swallowed error message, and a missing
+delivery-address display — see §19's gate test results).
+
+**Phase 10 (reviews, favorites polish, waitlist notifications, including
+driver rating) is next and has not been started.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
