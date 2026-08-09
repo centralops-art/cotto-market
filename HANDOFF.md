@@ -1,19 +1,23 @@
-# Cotto Marketplace — Handoff (Phase 8 built + fully gate-tested, PR #17 open)
+# Cotto Marketplace — Handoff (Phase 9 built + fully gate-tested, PR #18 open)
 
-Last updated: 2026-08-09. Phase 6 (cook order lifecycle) and Phase 7
-(delivery onboarding + pool) are both merged to `main` and fully
-gate-tested (§15, §16). Phase 8 (claim → deliver → payout) is **built,
-independently verified, and now fully gate-tested by the founder** — all
-11 acceptance-gate steps passed (§17), including a real Stripe Transfer
-verified in the Stripe Dashboard. One real bug surfaced during the
-walkthrough and is already fixed on the PR branch (completed deliveries
-stuck in "My Queue" forever — see §17). **PR #17 is open on
-`phase-8-claim-deliver-payout`, not yet merged to `main`.**
+Last updated: 2026-08-09. Phase 6, 7, and 8 are all merged to `main` and
+fully gate-tested (§15, §16, §18 — §18 records PR #17's merge, which had
+been left open at the top of this doc in error; it merged same-day).
+Phase 9 (unclaimed delivery fallback: T1/T2/T3) is **built,
+independently verified server-side (26/26 checks, including real Stripe
+test-mode money movement), and now fully gate-tested by the founder** —
+all 7 acceptance-gate steps passed, including a live cross-check that a
+real driver claim beats a pending customer offer. Four real bugs surfaced
+during the walkthrough and are already fixed on the PR branch (illegible
+suborder UUIDs in four separate emails, a swallowed error message, and a
+missing delivery-address display — see §19's gate test results). **PR #18
+is open on `phase-9-unclaimed-delivery-fallback`, not yet merged to
+`main`.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
 as-is for historical record of how Phase 6 was built and verified; §15 has
-its final close-out; §16 has Phase 7.)
+its final close-out; §16 has Phase 7; §19 has Phase 9.)
 
 ---
 
@@ -1635,3 +1639,308 @@ ask the founder before merging, per this project's standing rule that
 pushes/merges need explicit sign-off each time.** Once merged, Phase 9
 (unclaimed-order fallback: T1/T2/T3 SMS/customer-offer/refund) can be
 scoped.
+
+---
+
+## 18. PR #17 merge correction
+
+This doc's top summary said PR #17 was "open, ask before merging" as of
+2026-08-09, but a repo check at the start of the Phase 9 session found it
+had already been merged (`mergedAt: 2026-08-09T16:58:53Z`, merged by
+`centralops-art`, squashed into `main` as commit `a97ffc4`). Recorded here
+only because this doc briefly had stale state — no further action needed,
+Phase 8 is cleanly on `main`.
+
+---
+
+## 19. Phase 9 — Unclaimed delivery fallback (2026-08-09, built, awaiting founder gate test)
+
+Scope per `Cotto_MVP_Spec.md` section 3.7: a region-configurable T1/T2/T3
+cron (`regions.claim_window_t1/t2/t3_minutes`, defaults 10/30/60, already
+existed since migration 0001) that, for a `ready` delivery suborder sitting
+unclaimed: at T1 alerts the region's dispatch contact, at T2 offers the
+customer a pickup-or-refund choice, and at T3 auto-refunds if the customer
+never responds.
+
+Two decisions confirmed with the founder before building (see the
+conversation that opened this phase):
+1. **No push notifications.** The spec says "push/email/SMS" for the T2
+   offer, but no push infrastructure exists in this app at all (no
+   `expo-notifications`, no token storage) and building it would need a new
+   native module + EAS rebuild. Went with email + SMS only, reusing the
+   existing Resend/Twilio wiring.
+2. **In-app only, no new web surface.** The customer's pickup-or-refund
+   choice is two buttons on the existing `order-tracking/[id].tsx` screen
+   (shown whenever `suborder_pending_customer_offer()` returns non-null),
+   not a one-tap email/SMS link to a new public page. Simpler, no new
+   action-token security surface to design.
+
+**A real gap found and fixed before building the fallback logic itself**:
+`checkout-create-payment-intent` already computed a per-vendor Stripe Tax
+amount for every suborder, but only ever persisted the order-level *sum*
+(`orders.tax_cents`) — the per-suborder figure was silently discarded.
+Refunding a single suborder inside a possibly multi-vendor order needs that
+exact figure, not a guess. Migration 0042 adds `vendor_suborders.tax_cents`
+(mirrors the existing `subtotal_cents`/`delivery_fee_cents` columns);
+`checkout-create-payment-intent` now persists the value it was already
+computing.
+
+**Also found**: the admin app's existing order-level refund route
+(`apps/admin/src/app/api/admin/orders/[id]/refund`) reverses *every*
+vendor's Stripe Transfer on the order for a full refund — correct for its
+own use case (an admin manually refunding a whole order), but wrong to
+reuse here, since an unclaimed delivery is only ONE suborder inside a
+possibly multi-vendor order. Reusing that route would have incorrectly
+clawed back an unrelated vendor's payout. Phase 9 has its own
+suborder-scoped refund helper instead (see below).
+
+**What shipped:**
+1. Migration 0042: `vendor_suborders.tax_cents` (see above).
+2. Migration 0043: `claim_delivery()` now logs `claim_cancelled_pending_offer`
+   (an enum value that already existed since migration 0007, reserved for
+   exactly this) when a driver's claim wins the race against an active T2
+   offer. No behavior change to the claim itself — its existing atomic
+   `update ... where status = 'ready'` already made the driver win this
+   race for free; this is purely the audit trail the events table was built
+   for.
+3. Migration 0044: `suborder_pending_customer_offer(so_id)` — narrow
+   SECURITY DEFINER function, same pattern as
+   `suborder_customer_display_name`/`suborder_driver_display_name`/
+   `pool_suborder_customer_first_name`. Returns the T3 deadline if there's
+   an active, unresolved T2 offer for the suborder's *current*
+   `delivery_cycle`, else null. This is what the mobile order-tracking
+   screen polls to decide whether to show the two action buttons, without
+   widening `delivery_dispatch_events`' RLS (currently admin-only) to every
+   customer.
+4. `supabase/functions/_shared/refund-suborder.ts` — new shared module
+   (this project's edge functions don't import from `packages/shared`, see
+   §5's Deno extensionless-import note, but a same-directory `_shared/`
+   relative import with `.ts` works fine and already existed for
+   `cors.ts`). `refundSuborder()` refunds exactly one suborder's share
+   (subtotal + delivery fee + its own `tax_cents`) and reverses only that
+   suborder's own Transfer, if it has one. Race-safe: it does an atomic
+   `update vendor_suborders set status='refunded' where status='ready' and
+   delivery_cycle=X` *before* calling Stripe — the same idiom as
+   `claim_delivery`'s atomic claim — so a concurrent claim or a second
+   resolution attempt affects 0 rows and fails cleanly instead of
+   double-refunding. If the Stripe call itself then fails, it compensates
+   by reverting status back to `ready` so the order stays retryable rather
+   than stuck in a limbo `refunded` status with no money actually moved.
+5. Edge function `cron-unclaimed-delivery-check` — every-5-minute cron
+   (migration 0045, same `pg_cron`/`pg_net`/Vault pattern as every prior
+   cron in this project), scanning `ready` delivery suborders by
+   `ready_at` age (which resets to a fresh timestamp on every claim
+   release, per `release_delivery_claim`'s existing comment — so a
+   released-and-reclaimed suborder correctly gets its own fresh T1/T2/T3
+   countdown) against the region's configured minutes. Idempotent per
+   stage via `delivery_dispatch_events`, keyed by event type + the
+   suborder's current `delivery_cycle` in the payload.
+   - **T1**: email only to `regions.dispatch_email` — **deliberately
+     deviates from the spec's literal "SMS + email," confirmed with the
+     founder.** This project's Twilio A2P 10DLC campaign took about a
+     month and multiple rejections to get its first approval (§11); an
+     ops-alert SMS to a business dispatch number is a different message
+     type the approved campaign doesn't cover. Founder's explicit call:
+     email-only, do not reopen that Twilio review cycle for this. Matches
+     the precedent already set by `cron-stuck-delivery-watchdog` (Phase
+     8), which also only emails dispatch. This preference generalizes:
+     any future SMS-adjacent feature should default to email-only unless
+     it clearly fits the already-approved campaign's scope.
+   - **T2**: email + SMS to the customer (SMS gated on
+     `profiles.sms_opt_in`, same as every other customer notification in
+     this app), telling them to open the app. Logs `t2_customer_offer_sent`
+     with the T3 deadline in the payload.
+   - **T3**: calls `refundSuborder`, then emails both the customer and the
+     cook (the cook needs to know they won't be paid further on this
+     order — per spec item 6, "the cook is paid nothing," which required an
+     explicit Transfer reversal since this project pays the cook
+     immediately at `payment_intent.succeeded`, well before delivery).
+6. Edge function `resolve-delivery-offer` — the customer's in-app action,
+   `{suborderId, choice: "pickup" | "refund"}`. Verifies the caller is
+   really the order's customer, and defense-in-depth re-checks there's
+   genuinely an active, unresolved T2 offer for the current cycle before
+   doing anything.
+   - `refund`: calls the same `refundSuborder` helper as T3.
+   - `pickup`: converts `fulfillment` to `pickup`, clears the delivery
+     address/lat/lng/instructions, sets `pickup_at` ~15 minutes out
+     (spec 3.7's literal wording — deliberately not run through
+     `generatePickupSlots`'s business-hours grid, since this is an
+     emergency fallback, not a normal checkout-time slot pick), and
+     partial-refunds *only* the delivery fee (subtotal + tax stay charged
+     — the food is still being fulfilled). Guarded by its own atomic
+     conditional update (`where status='ready' and fulfillment='delivery'
+     and delivery_cycle=X`) before ever calling Stripe; reverts the
+     fulfillment change back if the Stripe refund call fails, so a
+     customer never ends up converted to pickup without actually getting
+     the delivery fee back.
+   Both paths email the vendor (cook) — a fulfillment change or refund on
+   their order is something they need to know about even though it's not
+   an error on their end.
+7. Mobile: `order-tracking/[id].tsx` now polls
+   `suborder_pending_customer_offer` every 10s (same interval as its
+   existing queries) and shows an amber card with "Switch to pickup" /
+   "Get a refund" buttons when it returns non-null, each behind an
+   `Alert.alert` confirm dialog (same pattern as `deliveries.tsx`'s claim
+   confirm), calling `resolve-delivery-offer` and invalidating both the
+   suborder detail and pending-offer queries on success.
+
+**Verified this session (server-side, throwaway-fixture discipline, same
+as every prior phase — a Node script against the hosted Supabase + Stripe
+test mode, deleted after use, confirmed clean via `git status`): 26/26
+checks passed**, including:
+- T1 fires past 10 minutes and is idempotent across repeated cron ticks.
+- T2 fires past 30 minutes; `suborder_pending_customer_offer` correctly
+  returns the deadline for the real customer and correctly returns `null`
+  for an unrelated profile (tested against a genuinely non-admin stranger
+  — the first attempt at this check used the founder's own profile as the
+  "stranger," which is invalid since the founder's profile is `ops_admin`
+  and admins are legitimately allowed to see it; caught and corrected
+  before trusting the result).
+- **The race test**: a driver's `claim_delivery` succeeds while a T2 offer
+  is pending, `claim_cancelled_pending_offer` gets logged exactly once, and
+  `suborder_pending_customer_offer` correctly flips to `null` afterward.
+- Customer's refund choice: **a real Stripe test-mode Transfer was
+  genuinely reversed** via this call site (not just T3's) —
+  `transfers.retrieve` confirmed `reversed: true` and the exact amount;
+  `orders.status` updated; a second resolution attempt on the same
+  suborder is cleanly rejected, not double-processed.
+- Customer's pickup choice: **Stripe confirmed exactly $7.99 (the delivery
+  fee) was refunded, not the subtotal or tax** — `fulfillment` flipped to
+  `pickup`, delivery address fields cleared, `pickup_at` landed within a
+  minute of the expected 15-minute-out target, suborder stayed `ready`
+  (not claimed/refunded).
+- Acting before any T2 offer exists is rejected; a stranger acting on
+  someone else's order is rejected with a clean 403.
+- **T3 auto-refund with a real Stripe test-mode Transfer**: PaymentIntent
+  created and confirmed via a real test payment method (no mobile UI
+  needed), a real Transfer sent to Tester Kitchen's actual Connect account
+  (mirroring how the payout would already have fired at checkout),
+  suborder correctly flips to `refunded`, `transfers.retrieve` confirms the
+  Transfer was fully reversed, and Stripe confirms a real refund of
+  exactly subtotal + delivery fee + tax.
+
+`pnpm typecheck && pnpm lint && pnpm test` all pass across all three
+workspaces.
+
+**Not verified this session** (needs a real device, same established
+limitation as every prior phase — §14): the mobile UI itself — the amber
+offer card, the two buttons, the confirm dialogs, and the full T1→T2→T3
+timeline as experienced hands-on on a real unclaimed order. No admin
+changes were made this phase, so no admin-side testing is needed.
+
+### Gate-test walkthrough
+
+This one is slower to walk through live than prior phases, since T1/T2/T3
+are real elapsed-time thresholds (10/30/60 minutes by default) — ask me to
+temporarily lower a *test* region's `claim_window_t1/t2/t3_minutes` (or
+backdate a fixture suborder's `ready_at`, same throwaway-fixture approach
+used for every other timing-dependent gate test in this project) rather
+than actually waiting an hour.
+
+Sign in as `CPITTS1183@gmail.com` (Tester Kitchen). You'll need a delivery
+order from a **different** vendor sitting unclaimed in `ready` status — ask
+me to seed one via a throwaway fixture, same as Phases 7/8's gate tests.
+
+1. Ask me to backdate the fixture's `ready_at` so it's past the region's T1
+   threshold, then manually trigger `cron-unclaimed-delivery-check`.
+   Confirm you (as the region's dispatch contact, if `dispatch_email` is
+   set to your inbox) receive the T1 email with the order details.
+2. Ask me to backdate further past T2, trigger the cron again. Confirm you
+   receive the "no driver available" email and SMS as the customer. Open
+   the Orders tab → tap into that order's tracking screen → confirm the
+   amber "No driver has claimed this delivery yet" card appears with
+   **Switch to pickup** / **Get a refund** buttons.
+3. Tap **Switch to pickup**, confirm the dialog copy, confirm. Verify: the
+   card disappears, the order-tracking screen now shows "Pickup order"
+   instead of "Delivery order," and you receive a partial-refund
+   confirmation for just the delivery fee (check your bank/card statement
+   or the Stripe test dashboard).
+4. Ask me to seed a **second** unclaimed order and push it past T2 again.
+   This time tap **Get a refund**, confirm, and verify the order shows
+   "Order refunded" on the tracking screen and you receive a full-refund
+   email.
+5. Ask me to seed a **third** unclaimed order, push it past T2 (offer
+   sent), then — before you tap anything — ask me to claim it as a driver
+   from a second test account. Confirm the amber offer card disappears
+   from your tracking screen on its own (poll interval is 10s) once
+   claimed.
+6. Ask me to seed a **fourth** unclaimed order and push it all the way
+   past T3 without you doing anything. Confirm you receive the
+   auto-refund email and the tracking screen shows "Order refunded"
+   without you having tapped either button.
+7. As the cook (Tester Kitchen), confirm you also received an email for
+   whichever of steps 3/4/6 actually completed against your own vendor
+   (a fulfillment-change or refund notice) — you'll need at least one of
+   the throwaway fixtures to be assigned to your own vendor as the cook to
+   check this (self-purchase is allowed by design, same as prior phases).
+
+### Gate test results (2026-08-09) — all 7 steps passed
+
+The founder ran the full walkthrough live, with Claude seeding each
+backdated fixture (real confirmed test-mode PaymentIntents throughout,
+learned partway through — see bug 1 below) and manually invoking
+`cron-unclaimed-delivery-check` in place of waiting for the real 5-minute
+schedule. Four real bugs surfaced, all root-caused, fixed, and pushed as
+follow-up commits to the same `phase-9-unclaimed-delivery-fallback`
+branch:
+
+**1. T1 dispatch email referenced the suborder by raw UUID (found at step
+1).** Illegible to a human dispatcher. Fixed: the email now lists the
+actual items ordered and a direct link into the admin order detail page
+(`https://admin.cottomarket.com/dashboard/orders/{order_id}`).
+
+**2. `resolve-delivery-offer` errors showed a useless generic message
+(found at step 3).** The first "Switch to pickup" attempt failed (the
+fixture had no real Stripe PaymentIntent behind it yet — a test-setup
+gap, not a product bug) but the app surfaced only "Edge Function returned
+a non-2xx status code" instead of the real reason. Root cause:
+supabase-js's `FunctionsHttpError.message` is generic by design — the
+actual `{error: "..."}` body the edge function sent back lives unread on
+`error.context` (the raw `Response`). Fixed in
+`order-tracking/[id].tsx`'s `resolveOffer` mutation to parse and surface
+it. All subsequent fixture orders were also given real confirmed
+test-mode PaymentIntents (`payment_method: "pm_card_visa"`,
+`confirm: true`) rather than a bare fixture — the same gap this session's
+earlier automated verification script had already hit and fixed for
+itself, just not yet carried into the gate-test fixtures.
+
+**3. `order-tracking/[id].tsx` never rendered the delivery address or
+pickup time at all (found at step 6, but pre-existing since Phase 6 — not
+something Phase 9 introduced or broke).** The screen already fetched
+`delivery_address`/`pickup_at` in its query but never displayed either.
+Fixed by mirroring the existing `kitchen/[id].tsx` pattern exactly.
+
+**4. The T3 cook-notification email and both `resolve-delivery-offer`
+vendor emails had the same raw-UUID problem as bug 1 (found at step 7,
+after bug 1 was already fixed for the T1 email specifically — the founder
+caught that the fix hadn't been applied everywhere).** Fixed all three
+remaining sites the same way: item descriptions instead of a suborder id.
+
+Also verified live:
+- **Step 3** (switch to pickup): Stripe confirmed exactly $7.99 (the
+  delivery fee) refunded, not the $8.00 subtotal or $0.64 tax; suborder
+  flipped to `fulfillment: "pickup"` with delivery fields cleared.
+- **Step 4** (get a refund): full $16.63 refund confirmed via Stripe;
+  suborder and order both flipped to `refunded`.
+- **Step 5** (race): a driver claim made server-side by Claude while the
+  T2 offer was showing caused the amber card to disappear from the
+  founder's screen within one ~10s poll cycle, with no action from the
+  founder — confirming a real claim (not just the automated test's
+  service-role simulation) correctly beats a pending offer.
+- **Step 6** (T3 auto-refund): full refund fired with zero taps from the
+  founder; confirmed via the tracking screen and the refund email.
+- **Step 7** (cook notification): confirmed on a fixture where the
+  founder's own Tester Kitchen was the cooking vendor (self-purchase,
+  same discipline as every prior phase's solo-testable gate steps) —
+  received both the customer refund email and the separate cook
+  notification email in the same inbox.
+
+All throwaway fixture orders (6 total across the 7 steps) were deleted
+after use, confirmed via a direct query, per this project's established
+discipline.
+
+**Phase 9 is fully gate-tested. PR #18
+(`phase-9-unclaimed-delivery-fallback` → `main`) is open and ready to
+merge — ask the founder before merging, per this project's standing
+rule.** Once merged, Phase 10 (reviews, favorites polish, waitlist
+notifications, including driver rating) is next.

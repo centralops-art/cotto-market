@@ -953,6 +953,7 @@ export type Database = {
           stripe_transfer_id: string | null
           stripe_transfer_reversal_id: string | null
           subtotal_cents: number
+          tax_cents: number
           updated_at: string
           vendor_id: string
           vendor_payout_cents: number
@@ -976,6 +977,7 @@ export type Database = {
           stripe_transfer_id?: string | null
           stripe_transfer_reversal_id?: string | null
           subtotal_cents: number
+          tax_cents?: number
           updated_at?: string
           vendor_id: string
           vendor_payout_cents?: number
@@ -999,6 +1001,7 @@ export type Database = {
           stripe_transfer_id?: string | null
           stripe_transfer_reversal_id?: string | null
           subtotal_cents?: number
+          tax_cents?: number
           updated_at?: string
           vendor_id?: string
           vendor_payout_cents?: number
@@ -1341,6 +1344,10 @@ export type Database = {
       }
       suborder_customer_profile_id: { Args: { so_id: string }; Returns: string }
       suborder_driver_display_name: { Args: { so_id: string }; Returns: string }
+      suborder_pending_customer_offer: {
+        Args: { so_id: string }
+        Returns: string
+      }
     }
     Enums: {
       cart_status: "open" | "abandoned" | "checked_out"

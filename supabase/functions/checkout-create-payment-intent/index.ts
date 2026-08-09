@@ -229,6 +229,7 @@ Deno.serve(async (req) => {
       deliveryFeeCents: number;
       platformFeeCents: number;
       vendorPayoutCents: number;
+      taxCents: number;
       items: { menuItemId: string; name: string; unitPriceCents: number; quantity: number }[];
     }[] = [];
 
@@ -320,6 +321,7 @@ Deno.serve(async (req) => {
         deliveryFeeCents,
         platformFeeCents,
         vendorPayoutCents: subtotalCents - platformFeeCents,
+        taxCents: vendorTaxCents,
         items: items.map((i) => ({
           menuItemId: i.menu_item_id,
           name: i.name,
@@ -375,6 +377,7 @@ Deno.serve(async (req) => {
           delivery_fee_cents: plan.deliveryFeeCents,
           platform_fee_cents: plan.platformFeeCents,
           vendor_payout_cents: plan.vendorPayoutCents,
+          tax_cents: plan.taxCents,
           status: "received",
         })
         .select()
