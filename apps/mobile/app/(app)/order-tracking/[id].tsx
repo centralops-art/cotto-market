@@ -79,7 +79,15 @@ export default function OrderTracking() {
   const resolveOffer = useMutation({
     mutationFn: async (choice: "pickup" | "refund") => {
       const { data, error } = await supabase.functions.invoke("resolve-delivery-offer", { body: { suborderId: id, choice } });
-      if (error) throw error;
+      if (error) {
+        // supabase-js's FunctionsHttpError.message is just "Edge Function
+        // returned a non-2xx status code" -- the actual {error: "..."} body
+        // resolve-delivery-offer sent back lives on error.context (the raw
+        // Response), unread by default.
+        const context = (error as { context?: Response }).context;
+        const body = await context?.json().catch(() => null);
+        throw new Error(body?.error ?? error.message);
+      }
       return data;
     },
     onSuccess: async () => {
