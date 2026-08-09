@@ -1,6 +1,17 @@
 import { redirect } from "next/navigation";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
+/** Every /dashboard/** page fetches fresh from Supabase on every request --
+ * this data changes from outside this browser session constantly (a vendor
+ * resubmitting from the mobile app, another admin acting elsewhere), so a
+ * cached snapshot is actively wrong, not just stale. Discovered during Phase
+ * 7 gate testing: reject -> resubmit (from mobile) -> revisit the vendor
+ * detail page in this same browser session showed the pre-reject render,
+ * hiding the new Approve/Reject buttons. Applies to the whole /dashboard/**
+ * segment from this single layout, same "one enforcement point" reasoning
+ * as the auth/MFA gate below. */
+export const dynamic = "force-dynamic";
+
 /** Every /dashboard/** route renders sensitive data (customer PII, vendor
  * financials, CFPM certs) via the service-role client, which bypasses RLS.
  * This is the single enforcement point: without it, "signed in" alone (to

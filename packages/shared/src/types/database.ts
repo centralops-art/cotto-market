@@ -873,6 +873,7 @@ export type Database = {
           delivery_agreement_accepted_at: string | null
           drivers_license_back_url: string | null
           drivers_license_expires_on: string | null
+          drivers_license_expiry_warned_at: string | null
           drivers_license_front_url: string | null
           id: string
           insurance_attested_at: string | null
@@ -890,6 +891,7 @@ export type Database = {
           delivery_agreement_accepted_at?: string | null
           drivers_license_back_url?: string | null
           drivers_license_expires_on?: string | null
+          drivers_license_expiry_warned_at?: string | null
           drivers_license_front_url?: string | null
           id?: string
           insurance_attested_at?: string | null
@@ -907,6 +909,7 @@ export type Database = {
           delivery_agreement_accepted_at?: string | null
           drivers_license_back_url?: string | null
           drivers_license_expires_on?: string | null
+          drivers_license_expiry_warned_at?: string | null
           drivers_license_front_url?: string | null
           id?: string
           insurance_attested_at?: string | null
@@ -1267,6 +1270,10 @@ export type Database = {
         Returns: boolean
       }
       owns_vendor: { Args: { target_vendor_id: string }; Returns: boolean }
+      pool_suborder_customer_first_name: {
+        Args: { so_id: string }
+        Returns: string
+      }
       suborder_customer_display_name: {
         Args: { so_id: string }
         Returns: string

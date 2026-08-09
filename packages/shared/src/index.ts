@@ -3,6 +3,7 @@ export * from "./fees";
 export * from "./supabase-client";
 export * from "./auth";
 export * from "./vendor-onboarding";
+export * from "./delivery-onboarding";
 export * from "./storefront";
 export * from "./pickup-slots";
 export * from "./legal";
