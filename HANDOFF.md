@@ -1,12 +1,12 @@
-# Cotto Marketplace — Handoff (Phase 7 built + fully gate-tested, PR #16 open)
+# Cotto Marketplace — Handoff (Phase 8 built + independently verified, awaiting founder gate test)
 
-Last updated: 2026-08-09. Phase 6 (cook order lifecycle) is merged and fully
-gate-tested (§15). Phase 7 (delivery onboarding + pool) is **built,
-independently verified, and now fully gate-tested by the founder** — all 12
-acceptance-gate steps passed (§16). Two real bugs surfaced during the
-walkthrough and are already fixed on the PR branch (admin dashboard stale
-caching, Location Services recovery — see §16). **PR #16 is open on
-`phase-7-delivery-onboarding-pool`, not yet merged to `main`.**
+Last updated: 2026-08-09. Phase 6 (cook order lifecycle) and Phase 7
+(delivery onboarding + pool) are both merged to `main` and fully
+gate-tested (§15, §16). Phase 8 (claim → deliver → payout) is **built and
+independently verified** (typecheck/lint/test + 24 server-side smoke tests,
+all passing, including a real two-driver race test and a real Stripe
+Transfer — §17) but **not yet gate-tested by the founder or merged**. Open
+on branch `phase-8-claim-deliver-payout`.
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -140,6 +140,12 @@ it's tested via Expo dev client + EAS builds.
 | 0033 | Phase 7: `vendor_delivery_profiles.drivers_license_expiry_warned_at` — mirrors `vendors.cfpm_expiry_warned_at` (0012), lets the new expiry cron avoid re-warning admins every day. |
 | 0034 | Phase 7: daily `pg_cron` schedule for `cron-driver-license-expiry-check`, mirrors `0014_cfpm_expiry_cron.sql` exactly, offset 15 min after the CFPM job. |
 | 0035 | Phase 7: `pool_suborder_customer_first_name(so_id)` SECURITY DEFINER function — gated on `can_view_pool_suborder` (not `owns_vendor`/`is_customer_of_order` like 0018/0031), returns only `split_part(full_name, ' ', 1)`. A pool-viewing driver hasn't claimed anything yet, so they see less than a cook/driver who has (spec 3.6: "customer first name only"). |
+| 0036 | Phase 8: `claim_delivery(so_id)` and `release_delivery_claim(so_id, reason)` SECURITY DEFINER RPCs — the race-safe claim (atomic `UPDATE ... WHERE status='ready'` + `delivery_claims` insert with the payout split locked in) and its counterpart (voluntary release or watchdog auto-release, differentiated internally by `auth.role()`). |
+| 0037 | Phase 8: full `create or replace` of `guard_suborder_status_transition()` (0017) extending the allow-list with the driver-side claim lifecycle (`ready→claimed→en_route_to_pickup→picked_up→en_route_to_customer→delivered→completed`, plus `{claimed,en_route_to_pickup}→ready` for release). Safe as a direct allow-list addition (not a role-bypass trick) because drivers have zero RLS UPDATE grant on `vendor_suborders` at all — this trigger only ever sees these transitions arrive via the Phase 8 RPCs/functions. |
+| 0038 | Phase 8: `delivery_claims.stuck_notified_at` — idempotency marker for the stuck-claim watchdog's dispatch email, mirrors `drivers_license_expiry_warned_at`. |
+| 0039 | Phase 8: full `create or replace` of `is_valid_message_recipient()` (0023), additively extending it to also recognize customer↔(currently active driver) as a valid message pair. **Fixed a real pre-existing gap**: driver↔customer messaging didn't work before this — the function only recognized customer↔cook. |
+| 0040 | Phase 8: every-5-minute `pg_cron` schedule for `cron-stuck-delivery-watchdog`, same `pg_net`/Vault-secret idiom as 0014/0034 but sub-hourly given the 20-minute stuck-claim threshold. |
+| 0041 | Phase 8: `suborder_driver_display_name(so_id)` SECURITY DEFINER function, mirrors `suborder_customer_display_name` (0031) in reverse — lets a customer's order-tracking screen show who's delivering their order. |
 
 **RLS pattern for orders/suborders/order_items**: written *only* by service-role
 edge functions (checkout function creates them as `pending_payment`; webhook
@@ -175,6 +181,9 @@ changes hosted schema, or `apps/mobile`/`apps/admin` typecheck will drift.
 | `stripe-webhook` | Verifies Stripe signature, idempotent on `orders.status`, fires per-vendor Transfers, flips order→paid + cart→checked_out, sends emails | **no JWT verification** (`--no-verify-jwt`, Stripe calls it directly with its own signature) |
 | `update-suborder-status` (Phase 6) | Cook-driven suborder status transitions. Body `{suborderId, newStatus}`, `newStatus` ∈ confirmed/preparing/ready/completed/cancelled. Verifies caller owns the vendor, performs the update (still independently gated by migration 0017's trigger), writes `audit_log`, sends best-effort email (Resend) + SMS (Twilio) to the customer. | anon+JWT (caller's own vendor) |
 | `cron-driver-license-expiry-check` (Phase 7) | pg_cron-triggered (0034); auto-suspends `vendor_delivery_profiles` (`delivery_active` → `delivery_suspended`) whose license expired, 60-day admin warning digest email. Direct field-substituted mirror of `cron-cfpm-expiry-check`. | service-role (cron) |
+| `update-delivery-status` (Phase 8) | Driver-driven delivery status transitions (`en_route_to_pickup`/`picked_up`/`en_route_to_customer`/`delivered`). Verifies claim ownership under the caller's own JWT, then switches to the service-role client for the actual writes (drivers have no RLS UPDATE grant on `vendor_suborders`). On `delivered`: fires the driver's Stripe Transfer (mirrors the cook-side Transfer in `stripe-webhook`), then a *separate* update to `completed` (the guard trigger only allows one status-step per statement). | anon+JWT (caller's own active claim) |
+| `compute-delivery-eta` (Phase 8) | Best-effort Mapbox ETA, called by the mobile client right after a successful claim (fire-and-forget). Mirrors `checkout-create-payment-intent`'s Directions call shape, reads `duration` instead of `distance`. | anon+JWT (caller's own active claim) |
+| `cron-stuck-delivery-watchdog` (Phase 8) | pg_cron-triggered every 5 min (0040); auto-releases claims stuck in `claimed`/`en_route_to_pickup` 20+ minutes (food hasn't left the kitchen yet — safe to re-offer), notifies `regions.dispatch_email` once (not auto-recoverable) for claims stuck in `picked_up`/`en_route_to_customer` 20+ minutes. | service-role (cron) |
 
 **Important Deno quirk**: edge functions do **not** import from
 `packages/shared` — that package's TypeScript uses extensionless relative
@@ -1379,8 +1388,180 @@ Claude, cleaned up immediately after each):
   license expiry date afterward — confirmed via a direct query, not just
   assumed.
 
-**Phase 7 is fully gate-tested. PR #16
-(`phase-7-delivery-onboarding-pool` → `main`) is open and ready to merge —
-ask the founder before merging, per this project's standing rule that
-pushes/merges need explicit sign-off each time.** Once merged, Phase 8
-(claim → deliver → payout) can be scoped.
+**Phase 7 is fully gate-tested and merged** (PR #16, squash-merged to
+`main` as commit `e7bba0f`). Phase 8 (claim → deliver → payout) is up
+next — see §17.
+
+---
+
+## 17. Phase 8 — Claim → deliver → payout (2026-08-09, built, awaiting founder gate test)
+
+Scope per `Cotto_MVP_Spec.md`'s phase table: race-safe claim flow, driver-side
+status transitions, Mapbox ETA, a deferred Stripe Transfer to the driver on
+delivery, self-claim block, and the region's soft/hard conflict-rule
+warning. Phase 9 (T1/T2/T3 fallback for orders that are *never* claimed) is
+explicitly out of scope.
+
+Three decisions confirmed with the founder before building:
+1. Build a "stuck-claim watchdog" cron now (a driver claims, then goes
+   dark — auto-release + notify dispatch), but the silence threshold is
+   **20 minutes**, not the spec's suggested 60.
+2. Skip driver payout-confirmation notifications — the spec's acceptance
+   criteria only requires seeing the payout in the driver's own Stripe
+   dashboard.
+3. Compute and store `vendor_suborders.mapbox_eta_minutes` via a real
+   Mapbox Directions call (not skipped).
+
+**What was already built, needing zero changes** (confirmed by direct
+reads before writing any code): `delivery_claims` (migration 0007 — every
+column already present, including the race-safety backstop
+`delivery_claims_one_active_per_suborder_uidx`), `is_active_driver_for_suborder()`
+and `can_view_pool_suborder()` (0010), `regions.delivery_conflict_rule`/
+`dispatch_email`/`delivery_payout_split_pct` (0001). Drivers have **zero
+RLS UPDATE grant on `vendor_suborders`** by design — every driver-side
+write goes through a SECURITY DEFINER function, never a raw client
+`.update()`.
+
+**Two real pre-existing gaps found and fixed, not assumed:**
+- Driver↔customer messaging didn't work — `is_valid_message_recipient()`
+  only recognized `(customer, cook)` as a valid pair (migration 0039).
+- `guard_suborder_status_transition()`'s allow-list stopped at `ready` for
+  delivery orders (migration 0037).
+
+**What shipped:**
+1. Migrations 0036–0041 (see §4).
+2. Edge functions `update-delivery-status`, `compute-delivery-eta`,
+   `cron-stuck-delivery-watchdog` (see §5).
+3. Mobile: `(tabs)/deliveries.tsx` gained a local 3-chip segmented control
+   (Available / My Queue / History) and a working **Claim** button on each
+   Available card — with a client-side confirm dialog (soft-warning copy,
+   or a blocking message for `hard_block` regions) using the driver's own
+   open-kitchen-order count, before ever calling the RPC. A new
+   `deliveries/[id].tsx` claimed-order detail screen (mirrors
+   `kitchen/[id].tsx`'s structure) adds the status-transition buttons, ETA
+   display, an **"Open in Maps"** button (`Linking.openURL` to a Google
+   Maps universal link — genuinely new, no prior art existed in this app),
+   a **"Release claim"** button, and the reused `MessageThread` component.
+   `order-tracking/[id].tsx` now also shows the assigned driver's name once
+   claimed.
+
+**Architecture decisions worth remembering for later phases:**
+- `claim_delivery` is a **pure Postgres RPC**, not an edge function — keeps
+  the one truly race-critical step (a single `UPDATE ... WHERE
+  status='ready'`, immediately followed by the `delivery_claims` insert)
+  fast and free of external HTTP calls. Mapbox ETA is a **separate
+  best-effort follow-up edge function** (`compute-delivery-eta`, fire-and-
+  forget from the mobile client right after a successful claim) for
+  exactly this reason.
+- `release_delivery_claim` is shared by both voluntary driver cancellation
+  and the watchdog cron (branches internally on `auth.role()`) — single
+  source of truth, not duplicated logic.
+- `update-delivery-status` (the only one of the three new functions that's
+  an edge function, not an RPC) exists specifically because `delivered`
+  needs a real Stripe API call, which plpgsql can't do. `delivered` is
+  handled as **two separate `vendor_suborders` UPDATE statements**
+  (`→delivered` then `→completed`) — the guard trigger only allows one
+  status-step per statement; combining them into one call would be
+  silently rejected.
+- A claim stuck in `claimed`/`en_route_to_pickup` auto-reverts to the pool
+  (food hasn't left the kitchen yet); a claim stuck in
+  `picked_up`/`en_route_to_customer` does **not** auto-revert (food is
+  already out) — the watchdog only notifies dispatch for those, once,
+  never auto-releasing them. This is a genuine, not-yet-solved gap for
+  that specific failure mode, flagged explicitly rather than papered over.
+
+**Verified this session (server-side, throwaway-fixture discipline —
+service-role client, insert/delete, deleted immediately after, confirmed
+clean via `git status`):** 24 checks, all passing, including:
+- **The race test** (the single most important correctness property of
+  this phase): two driver sessions calling `claim_delivery` on the same
+  `ready` suborder via `Promise.all` — exactly one won, the other got a
+  clean "just claimed by another driver" error, exactly one active
+  `delivery_claims` row resulted.
+- Self-claim rejection; the full transition sequence ending in
+  `completed`; release rejected once `picked_up`; the hard-block conflict
+  rule rejecting a claim attempt with an open kitchen order (temporarily
+  flipped the region's setting, reverted after); voluntary release
+  reverting to `ready` with `delivery_cycle` incremented; the watchdog
+  auto-releasing a backdated stuck `claimed` fixture and notifying-once
+  (not twice) for a backdated stuck `picked_up` fixture;
+  `compute-delivery-eta` populating a real ETA (14 minutes, sane); a
+  driver→customer message now succeeding under the extended RLS.
+- **A real Stripe Transfer**, landing on Tester Kitchen's real test-mode
+  Connect account (`acct_1Ts6zAFTs1uyq1Se`) — `tr_1U2O5JFMh2QSmPlsAAINnbMd`,
+  $6.39 (80% of a $7.99 delivery fee). First attempt failed with a genuine
+  Stripe error ("insufficient available funds") — this was a **test-mode
+  balance limitation, not a code bug**: the throwaway fixture order was
+  inserted directly into the DB rather than charged through a real
+  PaymentIntent, so the platform's test-mode balance had never actually
+  been credited. Fixed by crediting $50 of instantly-available test
+  balance via Stripe's documented `tok_bypassPending` test token (a
+  one-time top-up of the *platform's* Stripe test account — safe, test
+  mode only, not touching any real money), then re-ran the full transition
+  sequence and got a real, successful Transfer. Notably, the code's
+  graceful-degradation path (catch, log to `audit_log`, still mark the
+  order `completed`) worked exactly as designed even during the failed
+  attempt — the order reached `completed` both times, confirming a failed
+  driver payout never blocks completion, matching the cook-side webhook's
+  established tolerance.
+
+All 24 checks pass. `pnpm typecheck && pnpm lint && pnpm test` also pass
+across all three workspaces.
+
+**Not verified this session** (needs a real device, same established
+limitation as every prior phase — §14): the mobile UI itself, including
+the confirm-dialog copy, the segmented control, "Open in Maps" actually
+opening a real navigation app, and the claim→transition→release flow as
+experienced hands-on. No admin changes were made this phase (confirmed:
+delivery network stats are Phase 11's scope), so no admin-side testing is
+needed here.
+
+### Gate-test walkthrough
+
+Sign in as `CPITTS1183@gmail.com` (Tester Kitchen, already `delivery_active`
+from Phase 7's gate test) on mobile. You'll need a **second** delivery order
+from a vendor other than Tester Kitchen to claim (self-claim is blocked) —
+ask me to seed one via a throwaway fixture, same as Phase 7's gate test.
+
+1. Deliveries tab → Available → confirm the seeded order's card shows
+   distance, estimated payout, and the customer's first name (same as
+   Phase 7), now with a working **Claim** button.
+2. Tap Claim. If you have any open kitchen orders at the time, confirm the
+   soft-warning dialog appears with a sensible message before claiming
+   (North Shore Chicago defaults to `soft_warning`, not `hard_block`, so
+   this should let you proceed either way — ask me to temporarily flip the
+   region to `hard_block` if you want to see the blocking version too).
+3. Confirm you land on the claimed-order detail screen, and the order now
+   appears under **My Queue**.
+4. Confirm the ETA appears within a few seconds (shows "Calculating..."
+   briefly right after claiming, since the fetch is best-effort and
+   asynchronous).
+5. Tap **"Open in Maps"** — confirm it opens your phone's real Maps app
+   with the pickup vendor's address, then again after "Picked up" and
+   confirm it switches to the customer's delivery address.
+6. Walk every status button in order: Heading to pickup → Picked up → Out
+   for delivery → Mark delivered. Confirm each one updates immediately and
+   the order disappears from My Queue once delivered/completed, showing up
+   in **History** instead with the payout amount.
+7. Send a message from the claimed-order detail screen; confirm it also
+   appears on the customer-side `order-tracking` screen for that order
+   (use a second test account, or ask me to seed a message from the
+   "customer" side to confirm the reverse direction).
+8. Confirm the customer's `order-tracking` screen now shows "Driver:
+   [name]" once the order reaches `claimed` or later, and the full
+   timeline lights up through `completed`.
+9. Claim a **second** throwaway order (ask me to seed one), then tap
+   **"Release claim"** while still `claimed`; confirm it disappears from
+   My Queue and reappears in another driver's Available pool (or your own,
+   if you switch to a second test driver account).
+10. After `delivered` on step 6, open your real Stripe Express dashboard
+    (via the Connect account linked to Tester Kitchen) and confirm you can
+    see the real payout Transfer — no in-app confirmation is expected, per
+    decision #2 above.
+11. *(Optional, needs a throwaway fixture)* — ask me to backdate a claim's
+    timestamp and manually trigger the watchdog cron; confirm a stuck
+    `claimed` order reverts to the pool on its own.
+
+**Once the founder confirms the gate passed**, this branch
+(`phase-8-claim-deliver-payout`) can be merged the same way Phase 7 was —
+ask before pushing/merging, per this project's standing rule.
