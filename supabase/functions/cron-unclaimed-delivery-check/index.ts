@@ -139,14 +139,19 @@ Deno.serve(async (req) => {
         forThisCycle(events, "claim_cancelled_pending_offer");
       if (resolved) continue;
 
+      // Human-readable item list -- every email in this function that
+      // references "this order" uses this instead of a raw suborder UUID
+      // (gate-test finding: an opaque UUID means nothing to a human
+      // reading a dispatch/refund alert).
+      const { data: orderItems } = await service.from("order_items").select("name_snapshot, quantity").eq("vendor_suborder_id", so.id);
+      const itemsText = (orderItems ?? []).map((i) => `${i.quantity}x ${i.name_snapshot}`).join(", ") || "(items unavailable)";
+      const adminLink = `https://admin.cottomarket.com/dashboard/orders/${so.order_id}`;
+
       // --- T1: dispatch alert (email only -- see file header) ---
       if (elapsedMinutes >= region.claim_window_t1_minutes && !forThisCycle(events, "t1_sms_sent")) {
         if (region.dispatch_email) {
           const addr = so.delivery_address;
           const addrText = addr ? `${addr.line1 ?? ""}, ${addr.city ?? ""}, ${addr.state ?? ""} ${addr.zip ?? ""}`.trim() : "unknown address";
-          const { data: items } = await service.from("order_items").select("name_snapshot, quantity").eq("vendor_suborder_id", so.id);
-          const itemsText = (items ?? []).map((i) => `${i.quantity}x ${i.name_snapshot}`).join(", ") || "(items unavailable)";
-          const adminLink = `https://admin.cottomarket.com/dashboard/orders/${so.order_id}`;
           const { error: emailErr } = await sendEmail(
             resendKey,
             region.dispatch_email,
@@ -249,7 +254,7 @@ Deno.serve(async (req) => {
                 resendKey,
                 vendorAuth.user.email,
                 "A delivery order went unclaimed and was refunded",
-                `An order (suborder ${so.id}) went unclaimed by any driver and has been automatically refunded to the customer. No payout will be issued for this order.`
+                `Your order for ${itemsText} went unclaimed by any driver and has been automatically refunded to the customer. No payout will be issued for this order.`
               );
             }
           }

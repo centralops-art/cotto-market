@@ -101,6 +101,12 @@ Deno.serve(async (req) => {
     const { data: vendor } = await service.from("vendors").select("storefront_name, owner_profile_id").eq("id", so.vendor_id).single();
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, { apiVersion: "2025-08-27.basil" });
 
+    // Human-readable item list for the vendor-facing emails below -- a raw
+    // suborder UUID means nothing to a human reading a notification
+    // (gate-test finding, same fix applied to cron-unclaimed-delivery-check).
+    const { data: orderItems } = await service.from("order_items").select("name_snapshot, quantity").eq("vendor_suborder_id", suborderId);
+    const itemsText = (orderItems ?? []).map((i) => `${i.quantity}x ${i.name_snapshot}`).join(", ") || "(items unavailable)";
+
     if (choice === "refund") {
       const result = await refundSuborder(
         service,
@@ -137,7 +143,7 @@ Deno.serve(async (req) => {
             resendKey,
             vendorAuth.user.email,
             "A delivery order was refunded",
-            `The customer chose a refund for an unclaimed delivery order (suborder ${suborderId}) since no driver claimed it in time. No payout will be issued for this order.`
+            `The customer chose a refund for their order (${itemsText}) since no driver claimed it in time. No payout will be issued for this order.`
           );
         }
       }
@@ -227,7 +233,7 @@ Deno.serve(async (req) => {
           resendKey,
           vendorAuth.user.email,
           "A delivery order switched to pickup",
-          `Since no driver claimed it in time, the customer switched an order (suborder ${suborderId}) from delivery to pickup. New pickup time: ${new Date(pickupAt).toLocaleString("en-US", { timeZone: "America/Chicago" })}.`
+          `Since no driver claimed it in time, the customer switched their order (${itemsText}) from delivery to pickup. New pickup time: ${new Date(pickupAt).toLocaleString("en-US", { timeZone: "America/Chicago" })}.`
         );
       }
     }
