@@ -1309,6 +1309,35 @@ export type Database = {
         Args: { so_id: string }
         Returns: string
       }
+      rate_delivery_claim: {
+        Args: { comment?: string; rating: number; so_id: string }
+        Returns: {
+          claimed_at: string
+          cotto_delivery_fee_cents: number
+          created_at: string
+          customer_rating: number | null
+          customer_rating_comment: string | null
+          delivered_at: string | null
+          driver_payout_cents: number
+          driver_vendor_id: string
+          en_route_to_customer_at: string | null
+          en_route_to_pickup_at: string | null
+          id: string
+          picked_up_at: string | null
+          release_reason: string | null
+          released_at: string | null
+          stripe_transfer_id: string | null
+          stuck_notified_at: string | null
+          updated_at: string
+          vendor_suborder_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "delivery_claims"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       release_delivery_claim: {
         Args: { reason: string; so_id: string }
         Returns: {
@@ -1337,6 +1366,14 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      report_review: {
+        Args: { reason: string; review_id: string }
+        Returns: undefined
+      }
+      review_customer_first_name: {
+        Args: { review_id: string }
+        Returns: string
       }
       suborder_customer_display_name: {
         Args: { so_id: string }

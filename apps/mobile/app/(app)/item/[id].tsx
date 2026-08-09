@@ -7,6 +7,7 @@ import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { addToCart, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
 import { CartButton } from "../../../src/components/cart-button";
+import { StarRating } from "../../../src/components/star-rating";
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,6 +41,18 @@ export default function ItemDetail() {
         .maybeSingle();
       if (error) throw error;
       return data;
+    },
+  });
+
+  const ratingQuery = useQuery({
+    queryKey: ["item_rating_summary", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("review_items").select("rating").eq("menu_item_id", id!);
+      if (error) throw error;
+      const ratings = data.map((r) => r.rating);
+      const average = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+      return { average, count: ratings.length };
     },
   });
 
@@ -136,6 +149,14 @@ export default function ItemDetail() {
           )}
         </View>
         <Text className="text-lg text-cotto-accent">${(item.price_cents / 100).toFixed(2)}</Text>
+        {ratingQuery.data && ratingQuery.data.count > 0 && (
+          <View className="flex-row items-center gap-2">
+            <StarRating value={Math.round(ratingQuery.data.average)} size="sm" />
+            <Text className="text-sm text-white/60">
+              {ratingQuery.data.average.toFixed(1)} ({ratingQuery.data.count} review{ratingQuery.data.count === 1 ? "" : "s"})
+            </Text>
+          </View>
+        )}
 
         {item.description && <Text className="mt-2 text-white/80">{item.description}</Text>}
         {item.ingredients && (
