@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { MessageThread } from "../../../src/components/message-thread";
 
@@ -33,6 +33,7 @@ const STEP_LABELS: Record<string, string> = {
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const suborderQuery = useQuery({
     queryKey: ["order_tracking_detail", id],
@@ -60,6 +61,49 @@ export default function OrderTracking() {
     },
   });
 
+  // Phase 9: non-null once cron-unclaimed-delivery-check has sent the T2
+  // pickup-or-refund offer for this suborder's current delivery_cycle and
+  // nothing has resolved it yet (a claim, or an earlier choice) -- see
+  // suborder_pending_customer_offer (migration 0044).
+  const pendingOfferQuery = useQuery({
+    queryKey: ["suborder_pending_customer_offer", id],
+    enabled: !!id,
+    refetchInterval: 10000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("suborder_pending_customer_offer", { so_id: id! });
+      if (error) throw error;
+      return data as string | null;
+    },
+  });
+
+  const resolveOffer = useMutation({
+    mutationFn: async (choice: "pickup" | "refund") => {
+      const { data, error } = await supabase.functions.invoke("resolve-delivery-offer", { body: { suborderId: id, choice } });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["order_tracking_detail", id] }),
+        queryClient.invalidateQueries({ queryKey: ["suborder_pending_customer_offer", id] }),
+      ]);
+    },
+    onError: (err) => Alert.alert("Couldn't do that", (err as Error).message),
+  });
+
+  function confirmChoice(choice: "pickup" | "refund") {
+    Alert.alert(
+      choice === "pickup" ? "Switch to pickup?" : "Get a refund?",
+      choice === "pickup"
+        ? "No driver has claimed this delivery yet. We'll refund your delivery fee and set a pickup time about 15 minutes from now."
+        : "No driver has claimed this delivery yet. We'll issue a full refund for this order.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: choice === "pickup" ? "Switch to pickup" : "Get refund", onPress: () => resolveOffer.mutate(choice) },
+      ]
+    );
+  }
+
   if (suborderQuery.isLoading || !suborderQuery.data) {
     return (
       <View className="flex-1 items-center justify-center bg-cotto-dark">
@@ -85,6 +129,31 @@ export default function OrderTracking() {
       <Text className="text-white/60">{suborder.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
       {suborder.fulfillment === "delivery" && driverNameQuery.data && (
         <Text className="text-white/60">Driver: {driverNameQuery.data}</Text>
+      )}
+
+      {pendingOfferQuery.data && (
+        <View className="gap-3 rounded-lg bg-amber-400/10 p-4">
+          <Text className="font-semibold text-amber-400">No driver has claimed this delivery yet</Text>
+          <Text className="text-sm text-white/70">
+            You can switch to pickup (we'll refund the delivery fee) or get a full refund.
+          </Text>
+          <View className="flex-row gap-2">
+            <Pressable
+              className="flex-1 items-center rounded-lg bg-cotto-accent py-2 disabled:opacity-50"
+              disabled={resolveOffer.isPending}
+              onPress={() => confirmChoice("pickup")}
+            >
+              <Text className="font-semibold text-white">Switch to pickup</Text>
+            </Pressable>
+            <Pressable
+              className="flex-1 items-center rounded-lg border border-white/20 py-2 disabled:opacity-50"
+              disabled={resolveOffer.isPending}
+              onPress={() => confirmChoice("refund")}
+            >
+              <Text className="font-semibold text-white">Get a refund</Text>
+            </Pressable>
+          </View>
+        </View>
       )}
 
       {isTerminalIssue ? (
