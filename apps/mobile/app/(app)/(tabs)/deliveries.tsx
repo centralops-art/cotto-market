@@ -174,17 +174,25 @@ export default function Deliveries() {
     },
   });
 
+  // Base table is vendor_suborders, not delivery_claims -- a successfully
+  // delivered/completed claim's released_at stays null forever (it was
+  // never released, it finished normally), so filtering on delivery_claims
+  // alone would keep completed deliveries in "My Queue" permanently
+  // alongside genuinely active ones. Filtering on the suborder's own status
+  // is the correct signal for "still in progress" (same reasoning already
+  // used in cron-stuck-delivery-watchdog's query).
   const queueQuery = useQuery({
     queryKey: ["delivery_claims_queue", vendor?.id],
     enabled: !!vendor && tab === "queue",
     refetchInterval: 10000,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("delivery_claims")
-        .select("id, vendor_suborder_id, claimed_at, vendor_suborders(id, status, vendors(storefront_name))")
-        .eq("driver_vendor_id", vendor!.id)
-        .is("released_at", null)
-        .order("claimed_at", { ascending: true });
+        .from("vendor_suborders")
+        .select("id, status, vendors(storefront_name), delivery_claims!inner(id, claimed_at)")
+        .eq("delivery_claims.driver_vendor_id", vendor!.id)
+        .is("delivery_claims.released_at", null)
+        .in("status", ["claimed", "en_route_to_pickup", "picked_up", "en_route_to_customer"])
+        .order("claimed_at", { foreignTable: "delivery_claims", ascending: true });
       if (error) throw error;
       return data;
     },
@@ -195,12 +203,13 @@ export default function Deliveries() {
     enabled: !!vendor && tab === "history",
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("delivery_claims")
+        .from("vendor_suborders")
         .select(
-          "id, vendor_suborder_id, claimed_at, delivered_at, released_at, driver_payout_cents, vendor_suborders(id, status, vendors(storefront_name))"
+          "id, status, vendors(storefront_name), delivery_claims!inner(id, claimed_at, delivered_at, released_at, driver_payout_cents)"
         )
-        .eq("driver_vendor_id", vendor!.id)
-        .order("claimed_at", { ascending: false })
+        .eq("delivery_claims.driver_vendor_id", vendor!.id)
+        .not("status", "in", "(claimed,en_route_to_pickup,picked_up,en_route_to_customer)")
+        .order("claimed_at", { foreignTable: "delivery_claims", ascending: false })
         .limit(50);
       if (error) throw error;
       return data;
@@ -366,16 +375,16 @@ export default function Deliveries() {
         ) : !queueQuery.data || queueQuery.data.length === 0 ? (
           <Text className="mt-6 text-white/60">No claimed deliveries right now.</Text>
         ) : (
-          queueQuery.data.map((claimRow) => {
-            const so = claimRow.vendor_suborders as unknown as { id: string; status: string; vendors: { storefront_name: string } | null } | null;
+          queueQuery.data.map((so) => {
+            const vendorInfo = so.vendors as unknown as { storefront_name: string } | null;
             return (
               <Pressable
-                key={claimRow.id}
+                key={so.id}
                 className="gap-1 rounded-lg bg-white/5 p-4"
-                onPress={() => router.push({ pathname: "/(app)/deliveries/[id]", params: { id: claimRow.vendor_suborder_id } })}
+                onPress={() => router.push({ pathname: "/(app)/deliveries/[id]", params: { id: so.id } })}
               >
-                <Text className="font-semibold text-white">{so?.vendors?.storefront_name ?? "Unknown vendor"}</Text>
-                <Text className="text-sm text-white/60">{so ? (QUEUE_STATUS_LABELS[so.status] ?? so.status) : ""}</Text>
+                <Text className="font-semibold text-white">{vendorInfo?.storefront_name ?? "Unknown vendor"}</Text>
+                <Text className="text-sm text-white/60">{QUEUE_STATUS_LABELS[so.status] ?? so.status}</Text>
               </Pressable>
             );
           })
@@ -387,18 +396,28 @@ export default function Deliveries() {
         ) : !historyQuery.data || historyQuery.data.length === 0 ? (
           <Text className="mt-6 text-white/60">No delivery history yet.</Text>
         ) : (
-          historyQuery.data.map((claimRow) => {
-            const so = claimRow.vendor_suborders as unknown as { id: string; status: string; vendors: { storefront_name: string } | null } | null;
-            const outcome = claimRow.released_at ? "Released" : claimRow.delivered_at ? "Delivered" : so?.status ?? "In progress";
+          historyQuery.data.map((so) => {
+            const vendorInfo = so.vendors as unknown as { storefront_name: string } | null;
+            // Filtered with !inner and a driver_vendor_id eq, so this array
+            // always has at least one row here -- take the most relevant
+            // (query orders by claimed_at desc at the top level, but PostgREST
+            // doesn't guarantee embedded-array order matches; take the last
+            // claim by claimed_at to be safe).
+            const claims = (so.delivery_claims ?? []) as unknown as {
+              claimed_at: string;
+              delivered_at: string | null;
+              released_at: string | null;
+              driver_payout_cents: number;
+            }[];
+            const claim = [...claims].sort((a, b) => (a.claimed_at < b.claimed_at ? 1 : -1))[0];
+            const outcome = claim?.released_at ? "Released" : claim?.delivered_at ? "Delivered" : so.status;
             return (
-              <View key={claimRow.id} className="flex-row items-center justify-between gap-1 rounded-lg bg-white/5 p-4">
+              <View key={so.id} className="flex-row items-center justify-between gap-1 rounded-lg bg-white/5 p-4">
                 <View>
-                  <Text className="font-semibold text-white">{so?.vendors?.storefront_name ?? "Unknown vendor"}</Text>
+                  <Text className="font-semibold text-white">{vendorInfo?.storefront_name ?? "Unknown vendor"}</Text>
                   <Text className="text-sm text-white/60">{outcome}</Text>
                 </View>
-                {claimRow.delivered_at && (
-                  <Text className="font-semibold text-cotto-accent">{formatCents(claimRow.driver_payout_cents)}</Text>
-                )}
+                {claim?.delivered_at && <Text className="font-semibold text-cotto-accent">{formatCents(claim.driver_payout_cents)}</Text>}
               </View>
             );
           })
