@@ -1,11 +1,12 @@
-# Cotto Marketplace — Handoff (Phase 7 built, awaiting the founder's gate test)
+# Cotto Marketplace — Handoff (Phase 7 built + fully gate-tested, PR #16 open)
 
-Last updated: 2026-08-08. Phase 6 (cook order lifecycle) is merged and fully
-gate-tested (§15). Phase 7 (delivery onboarding + pool) is **built and
-independently verified** (typecheck/lint/test + 12 server-side smoke tests,
-all passing — §16) but **not yet gate-tested by the founder**. Per this
-project's established workflow (§1), Phase 7 stays open until that hands-on
-walkthrough passes.
+Last updated: 2026-08-09. Phase 6 (cook order lifecycle) is merged and fully
+gate-tested (§15). Phase 7 (delivery onboarding + pool) is **built,
+independently verified, and now fully gate-tested by the founder** — all 12
+acceptance-gate steps passed (§16). Two real bugs surfaced during the
+walkthrough and are already fixed on the PR branch (admin dashboard stale
+caching, Location Services recovery — see §16). **PR #16 is open on
+`phase-7-delivery-onboarding-pool`, not yet merged to `main`.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -1161,7 +1162,7 @@ irregular or squash-worthy history here, so no rebase/rewrite is needed.
 
 ---
 
-## 16. Phase 7 — Delivery onboarding + pool (2026-08-08, built, awaiting founder gate test)
+## 16. Phase 7 — Delivery onboarding + pool (2026-08-08/09, built + fully gate-tested)
 
 Scope per `Cotto_MVP_Spec.md`'s phase table: the wizard that lets an
 already-approved cook vendor also become a delivery driver, admin review of
@@ -1321,6 +1322,65 @@ on mobile, and as an admin allow-list account in the admin app.
     profile flips to suspended and the Deliveries tab disappears on next
     app foreground.
 
-**Once the founder confirms the gate passed**, this phase can be squash-merged
-per the established `phase N: <description>` convention, and Phase 8
+### Gate test results (2026-08-09) — all 12 steps passed
+
+The founder ran the full walkthrough on-device (Android, real hardware) and
+the admin PR #16 preview URL. All 12 steps passed. Two real bugs surfaced
+along the way — both root-caused, fixed, and pushed to the same
+`phase-7-delivery-onboarding-pool` branch as follow-up commits (not
+squashed into the original phase commit, consistent with this project's
+established convention of separate `fix:` commits for gate-test findings):
+
+**1. Admin dashboard served stale data after an out-of-band DB change
+(found at step 6).** Reject the delivery application → resubmit from
+mobile → revisit the vendor detail page in the *same admin browser
+session* → still showed the pre-reject render, hiding the new
+Approve/Reject buttons. Root cause: nothing under `/dashboard/**` opted out
+of Next.js's default caching, so a snapshot from before the mobile
+resubmission could be served instead of a fresh query — and this data
+changes constantly from outside any given browser session (vendors and
+customers act from the mobile app). Not specific to Phase 7's new pages;
+this was a latent risk across the whole admin dashboard that Phase 7's
+reject→resubmit→reapprove cycle happened to be the first flow to exercise
+within a single test session. Fixed with `export const dynamic =
+"force-dynamic"` on `apps/admin/src/app/dashboard/layout.tsx` — single
+enforcement point, same reasoning as the auth/MFA gate already there,
+covers every current and future page under `/dashboard/**`.
+
+**2. Deliveries tab hung on a spinner forever with system Location
+Services disabled (found at step 9).** App-level location permission
+stays `granted` even after the user turns off phone-wide Location Services
+entirely (these are separate OS concepts on Android) — so
+`requestLocation()` skipped straight past the permission-denied check to
+`getCurrentPositionAsync()`, which hung/rejected uncaught, leaving
+`locationStatus` stuck at `"requesting"` indefinitely. Toggling Delivery
+Mode off/on didn't help either, since only screen *focus* re-triggers a
+location request, not the on-duty toggle. Fixed in
+`apps/mobile/app/(app)/(tabs)/deliveries.tsx`: explicit
+`Location.hasServicesEnabledAsync()` check up front, the whole flow wrapped
+in try/catch, and a 15s timeout guard — any failure mode now lands on the
+same visible "location required" state with a working "Try again" button
+instead of an indefinite spinner. Verified live: founder disabled Location
+Services, confirmed the persistent message + retry button appeared (no
+more spinner), re-enabled services, tapped Try Again, pool loaded
+normally.
+
+Also verified live (steps 10 and 12, both needed a throwaway fixture from
+Claude, cleaned up immediately after each):
+- **10:** a live `ready` delivery order seeded from Second Test Kitchen
+  appeared in the founder's pool within one ~10s poll cycle with no manual
+  pull, and disappeared the same way once removed.
+- **12:** the founder's own Tester Kitchen delivery profile was
+  temporarily backdated (`drivers_license_expires_on` → a past date), the
+  cron function invoked manually, confirmed the profile flipped to
+  `delivery_suspended` and the Deliveries tab disappeared on next app
+  foreground (Account correctly showed "suspended... contact Central Ops"),
+  then fully restored to the real `delivery_active` status and real
+  license expiry date afterward — confirmed via a direct query, not just
+  assumed.
+
+**Phase 7 is fully gate-tested. PR #16
+(`phase-7-delivery-onboarding-pool` → `main`) is open and ready to merge —
+ask the founder before merging, per this project's standing rule that
+pushes/merges need explicit sign-off each time.** Once merged, Phase 8
 (claim → deliver → payout) can be scoped.
