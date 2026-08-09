@@ -40,7 +40,10 @@ export default function LeaveReview() {
   });
 
   const existingReviewQuery = useQuery({
-    queryKey: ["existing_review", id, profile?.id],
+    // Same key as order-tracking/[id].tsx's own existingReviewQuery -- they
+    // must match exactly, or invalidating one after a successful submit
+    // (below) won't refresh the other screen's stale "no review yet" cache.
+    queryKey: ["existing_review", id],
     enabled: !!id && !!profile,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -126,7 +129,7 @@ export default function LeaveReview() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["existing_review", id, profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ["existing_review", id] });
       Alert.alert("Thanks for the review!", "", [{ text: "OK", onPress: () => router.back() }]);
     },
     onError: (err) => {

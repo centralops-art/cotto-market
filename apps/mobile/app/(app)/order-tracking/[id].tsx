@@ -202,14 +202,17 @@ export default function OrderTracking() {
         </View>
       )}
 
-      {suborder.status === "completed" && !existingReviewQuery.data && (
-        <Pressable
-          className="items-center rounded-lg bg-cotto-accent py-3"
-          onPress={() => router.push({ pathname: "/(app)/review/[id]", params: { id: id! } })}
-        >
-          <Text className="font-semibold text-white">Leave a review</Text>
-        </Pressable>
-      )}
+      {suborder.status === "completed" &&
+        (existingReviewQuery.data ? (
+          <Text className="text-center text-white/50">You've already reviewed this order. Thanks!</Text>
+        ) : (
+          <Pressable
+            className="items-center rounded-lg bg-cotto-accent py-3"
+            onPress={() => router.push({ pathname: "/(app)/review/[id]", params: { id: id! } })}
+          >
+            <Text className="font-semibold text-white">Leave a review</Text>
+          </Pressable>
+        ))}
 
       <View className="gap-2 rounded-lg bg-white/5 p-4">
         <Text className="font-semibold text-white">Items</Text>
