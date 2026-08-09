@@ -135,6 +135,16 @@ export default function OrderTracking() {
 
       <Text className="text-2xl font-bold text-white">{vendor?.storefront_name ?? "Order"}</Text>
       <Text className="text-white/60">{suborder.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
+      {suborder.fulfillment === "pickup" && suborder.pickup_at && (
+        <Text className="text-white/60">Pickup time: {new Date(suborder.pickup_at).toLocaleString()}</Text>
+      )}
+      {suborder.fulfillment === "delivery" && suborder.delivery_address && (
+        <Text className="text-white/60">
+          Delivering to: {(suborder.delivery_address as { line1: string; city: string; state: string; zip: string }).line1},{" "}
+          {(suborder.delivery_address as { city: string }).city}
+        </Text>
+      )}
+      {suborder.delivery_instructions && <Text className="text-white/60">Instructions: {suborder.delivery_instructions}</Text>}
       {suborder.fulfillment === "delivery" && driverNameQuery.data && (
         <Text className="text-white/60">Driver: {driverNameQuery.data}</Text>
       )}
