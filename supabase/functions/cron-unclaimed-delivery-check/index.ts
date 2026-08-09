@@ -144,11 +144,14 @@ Deno.serve(async (req) => {
         if (region.dispatch_email) {
           const addr = so.delivery_address;
           const addrText = addr ? `${addr.line1 ?? ""}, ${addr.city ?? ""}, ${addr.state ?? ""} ${addr.zip ?? ""}`.trim() : "unknown address";
+          const { data: items } = await service.from("order_items").select("name_snapshot, quantity").eq("vendor_suborder_id", so.id);
+          const itemsText = (items ?? []).map((i) => `${i.quantity}x ${i.name_snapshot}`).join(", ") || "(items unavailable)";
+          const adminLink = `https://admin.cottomarket.com/dashboard/orders/${so.order_id}`;
           const { error: emailErr } = await sendEmail(
             resendKey,
             region.dispatch_email,
             `Unclaimed delivery needs attention -- ${so.vendors?.storefront_name ?? "order"}`,
-            `A delivery from ${so.vendors?.storefront_name ?? "a vendor"} has been ready and unclaimed for over ${region.claim_window_t1_minutes} minutes.\n\nSuborder: ${so.id}\nDelivery address: ${addrText}\n\nPlease help find a driver for this order.`
+            `A delivery from ${so.vendors?.storefront_name ?? "a vendor"} has been ready and unclaimed for over ${region.claim_window_t1_minutes} minutes.\n\nItems: ${itemsText}\nDelivery address: ${addrText}\n\nView this order: ${adminLink}\n\nPlease help find a driver for this order.`
           );
           if (emailErr) {
             await service.from("audit_log").insert({
