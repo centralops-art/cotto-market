@@ -49,6 +49,17 @@ export default function OrderTracking() {
     },
   });
 
+  const driverNameQuery = useQuery({
+    queryKey: ["suborder_driver_display_name", id],
+    enabled: !!id,
+    refetchInterval: 10000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("suborder_driver_display_name", { so_id: id! });
+      if (error) throw error;
+      return data as string | null;
+    },
+  });
+
   if (suborderQuery.isLoading || !suborderQuery.data) {
     return (
       <View className="flex-1 items-center justify-center bg-cotto-dark">
@@ -72,6 +83,9 @@ export default function OrderTracking() {
 
       <Text className="text-2xl font-bold text-white">{vendor?.storefront_name ?? "Order"}</Text>
       <Text className="text-white/60">{suborder.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
+      {suborder.fulfillment === "delivery" && driverNameQuery.data && (
+        <Text className="text-white/60">Driver: {driverNameQuery.data}</Text>
+      )}
 
       {isTerminalIssue ? (
         <View className="rounded-lg bg-red-400/10 p-4">
