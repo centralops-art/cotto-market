@@ -2137,3 +2137,8 @@ prior phase's gate test if there's no real completed order handy yet.
     me to flip it back in stock and manually trigger
     `cron-waitlist-restock-check`; confirm the "back in stock" email
     arrives.
+
+**Phase 10 is built and server-side verified. PR #19
+(`phase-10-reviews-favorites-waitlist` → `main`) is open and ready to
+merge — ask the founder before merging, per this project's standing
+rule.**
