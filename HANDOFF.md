@@ -1731,16 +1731,16 @@ suborder-scoped refund helper instead (see below).
    stage via `delivery_dispatch_events`, keyed by event type + the
    suborder's current `delivery_cycle` in the payload.
    - **T1**: email only to `regions.dispatch_email` — **deliberately
-     deviates from the spec's literal "SMS + email."** This project's
-     Twilio A2P 10DLC campaign was rejected twice already (§11) for
-     message content outside its registered scope (consumer order-status
-     updates to opted-in customers); an ops-alert SMS to a business
-     dispatch number is a different message type the approved campaign
-     doesn't cover, and a third rejection isn't worth risking. Matches the
-     precedent already set by `cron-stuck-delivery-watchdog` (Phase 8),
-     which also only emails dispatch. **Flagging this for the founder's
-     awareness — happy to revisit if you want SMS here too and are willing
-     to go back to Twilio for a campaign amendment.**
+     deviates from the spec's literal "SMS + email," confirmed with the
+     founder.** This project's Twilio A2P 10DLC campaign took about a
+     month and multiple rejections to get its first approval (§11); an
+     ops-alert SMS to a business dispatch number is a different message
+     type the approved campaign doesn't cover. Founder's explicit call:
+     email-only, do not reopen that Twilio review cycle for this. Matches
+     the precedent already set by `cron-stuck-delivery-watchdog` (Phase
+     8), which also only emails dispatch. This preference generalizes:
+     any future SMS-adjacent feature should default to email-only unless
+     it clearly fits the already-approved campaign's scope.
    - **T2**: email + SMS to the customer (SMS gated on
      `profiles.sms_opt_in`, same as every other customer notification in
      this app), telling them to open the app. Logs `t2_customer_offer_sent`
