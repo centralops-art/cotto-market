@@ -1,13 +1,18 @@
-# Cotto Marketplace — Handoff (Phase 9 built + independently verified, awaiting founder gate test)
+# Cotto Marketplace — Handoff (Phase 9 built + fully gate-tested, PR #18 open)
 
 Last updated: 2026-08-09. Phase 6, 7, and 8 are all merged to `main` and
 fully gate-tested (§15, §16, §18 — §18 records PR #17's merge, which had
 been left open at the top of this doc in error; it merged same-day).
-Phase 9 (unclaimed delivery fallback: T1/T2/T3) is **built and
+Phase 9 (unclaimed delivery fallback: T1/T2/T3) is **built,
 independently verified server-side (26/26 checks, including real Stripe
-test-mode money movement)** — see §19. **PR #18 is open on
-`phase-9-unclaimed-delivery-fallback`, not yet merged to `main`, awaiting
-the founder's own hands-on gate test.**
+test-mode money movement), and now fully gate-tested by the founder** —
+all 7 acceptance-gate steps passed, including a live cross-check that a
+real driver claim beats a pending customer offer. Four real bugs surfaced
+during the walkthrough and are already fixed on the PR branch (illegible
+suborder UUIDs in four separate emails, a swallowed error message, and a
+missing delivery-address display — see §19's gate test results). **PR #18
+is open on `phase-9-unclaimed-delivery-fallback`, not yet merged to
+`main`.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -1869,7 +1874,73 @@ me to seed one via a throwaway fixture, same as Phases 7/8's gate tests.
    the throwaway fixtures to be assigned to your own vendor as the cook to
    check this (self-purchase is allowed by design, same as prior phases).
 
-**PR #18 (`phase-9-unclaimed-delivery-fallback` → `main`) will be opened
-once this section is committed — ask the founder before merging, per this
-project's standing rule.** Once merged, Phase 10 (reviews, favorites
-polish, waitlist notifications, including driver rating) is next.
+### Gate test results (2026-08-09) — all 7 steps passed
+
+The founder ran the full walkthrough live, with Claude seeding each
+backdated fixture (real confirmed test-mode PaymentIntents throughout,
+learned partway through — see bug 1 below) and manually invoking
+`cron-unclaimed-delivery-check` in place of waiting for the real 5-minute
+schedule. Four real bugs surfaced, all root-caused, fixed, and pushed as
+follow-up commits to the same `phase-9-unclaimed-delivery-fallback`
+branch:
+
+**1. T1 dispatch email referenced the suborder by raw UUID (found at step
+1).** Illegible to a human dispatcher. Fixed: the email now lists the
+actual items ordered and a direct link into the admin order detail page
+(`https://admin.cottomarket.com/dashboard/orders/{order_id}`).
+
+**2. `resolve-delivery-offer` errors showed a useless generic message
+(found at step 3).** The first "Switch to pickup" attempt failed (the
+fixture had no real Stripe PaymentIntent behind it yet — a test-setup
+gap, not a product bug) but the app surfaced only "Edge Function returned
+a non-2xx status code" instead of the real reason. Root cause:
+supabase-js's `FunctionsHttpError.message` is generic by design — the
+actual `{error: "..."}` body the edge function sent back lives unread on
+`error.context` (the raw `Response`). Fixed in
+`order-tracking/[id].tsx`'s `resolveOffer` mutation to parse and surface
+it. All subsequent fixture orders were also given real confirmed
+test-mode PaymentIntents (`payment_method: "pm_card_visa"`,
+`confirm: true`) rather than a bare fixture — the same gap this session's
+earlier automated verification script had already hit and fixed for
+itself, just not yet carried into the gate-test fixtures.
+
+**3. `order-tracking/[id].tsx` never rendered the delivery address or
+pickup time at all (found at step 6, but pre-existing since Phase 6 — not
+something Phase 9 introduced or broke).** The screen already fetched
+`delivery_address`/`pickup_at` in its query but never displayed either.
+Fixed by mirroring the existing `kitchen/[id].tsx` pattern exactly.
+
+**4. The T3 cook-notification email and both `resolve-delivery-offer`
+vendor emails had the same raw-UUID problem as bug 1 (found at step 7,
+after bug 1 was already fixed for the T1 email specifically — the founder
+caught that the fix hadn't been applied everywhere).** Fixed all three
+remaining sites the same way: item descriptions instead of a suborder id.
+
+Also verified live:
+- **Step 3** (switch to pickup): Stripe confirmed exactly $7.99 (the
+  delivery fee) refunded, not the $8.00 subtotal or $0.64 tax; suborder
+  flipped to `fulfillment: "pickup"` with delivery fields cleared.
+- **Step 4** (get a refund): full $16.63 refund confirmed via Stripe;
+  suborder and order both flipped to `refunded`.
+- **Step 5** (race): a driver claim made server-side by Claude while the
+  T2 offer was showing caused the amber card to disappear from the
+  founder's screen within one ~10s poll cycle, with no action from the
+  founder — confirming a real claim (not just the automated test's
+  service-role simulation) correctly beats a pending offer.
+- **Step 6** (T3 auto-refund): full refund fired with zero taps from the
+  founder; confirmed via the tracking screen and the refund email.
+- **Step 7** (cook notification): confirmed on a fixture where the
+  founder's own Tester Kitchen was the cooking vendor (self-purchase,
+  same discipline as every prior phase's solo-testable gate steps) —
+  received both the customer refund email and the separate cook
+  notification email in the same inbox.
+
+All throwaway fixture orders (6 total across the 7 steps) were deleted
+after use, confirmed via a direct query, per this project's established
+discipline.
+
+**Phase 9 is fully gate-tested. PR #18
+(`phase-9-unclaimed-delivery-fallback` → `main`) is open and ready to
+merge — ask the founder before merging, per this project's standing
+rule.** Once merged, Phase 10 (reviews, favorites polish, waitlist
+notifications, including driver rating) is next.
