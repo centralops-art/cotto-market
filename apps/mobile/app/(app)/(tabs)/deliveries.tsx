@@ -11,6 +11,24 @@ import { haversineMiles } from "../../../src/lib/geo";
 type Coords = { lat: number; lng: number };
 type LocationStatus = "idle" | "requesting" | "granted" | "denied";
 
+const LOCATION_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Location request timed out")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export default function Deliveries() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
@@ -64,14 +82,34 @@ export default function Deliveries() {
 
   const requestLocation = useCallback(async () => {
     setLocationStatus("requesting");
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (!permission.granted) {
+    try {
+      // App-level permission can stay "granted" even after the user turns
+      // system Location Services off entirely -- check that separately, or
+      // getCurrentPositionAsync below hangs/rejects on some devices without
+      // ever surfacing a usable state.
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        setLocationStatus("denied");
+        return;
+      }
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setLocationStatus("denied");
+        return;
+      }
+      const position = await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        LOCATION_TIMEOUT_MS
+      );
+      setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+      setLocationStatus("granted");
+    } catch {
+      // Any failure here (permission revoked mid-flight, services disabled,
+      // the OS prompt dismissed, a timeout) should land on the same visible
+      // "location required" state with a retry button -- never leave the
+      // screen stuck on the loading spinner indefinitely.
       setLocationStatus("denied");
-      return;
     }
-    const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
-    setLocationStatus("granted");
   }, []);
 
   // GPS is read once per focus/pull-to-refresh, not on every 10s poll tick --
@@ -166,7 +204,8 @@ export default function Deliveries() {
       {locationStatus === "denied" ? (
         <View className="mt-6 items-center gap-3 rounded-lg bg-white/5 p-6">
           <Text className="text-center text-white/70">
-            Location access is required to see distances in the delivery pool.
+            Location access is required to see distances in the delivery pool. Make sure Location Services are
+            turned on for Cotto in your phone's settings, then try again.
           </Text>
           <Pressable className="items-center rounded-lg bg-cotto-accent px-4 py-2" onPress={requestLocation}>
             <Text className="font-semibold text-white">Try again</Text>
