@@ -1,12 +1,14 @@
-# Cotto Marketplace — Handoff (Phase 8 built + independently verified, awaiting founder gate test)
+# Cotto Marketplace — Handoff (Phase 8 built + fully gate-tested, PR #17 open)
 
 Last updated: 2026-08-09. Phase 6 (cook order lifecycle) and Phase 7
 (delivery onboarding + pool) are both merged to `main` and fully
-gate-tested (§15, §16). Phase 8 (claim → deliver → payout) is **built and
-independently verified** (typecheck/lint/test + 24 server-side smoke tests,
-all passing, including a real two-driver race test and a real Stripe
-Transfer — §17) but **not yet gate-tested by the founder or merged**. Open
-on branch `phase-8-claim-deliver-payout`.
+gate-tested (§15, §16). Phase 8 (claim → deliver → payout) is **built,
+independently verified, and now fully gate-tested by the founder** — all
+11 acceptance-gate steps passed (§17), including a real Stripe Transfer
+verified in the Stripe Dashboard. One real bug surfaced during the
+walkthrough and is already fixed on the PR branch (completed deliveries
+stuck in "My Queue" forever — see §17). **PR #17 is open on
+`phase-8-claim-deliver-payout`, not yet merged to `main`.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -1562,6 +1564,74 @@ ask me to seed one via a throwaway fixture, same as Phase 7's gate test.
     timestamp and manually trigger the watchdog cron; confirm a stuck
     `claimed` order reverts to the pool on its own.
 
-**Once the founder confirms the gate passed**, this branch
-(`phase-8-claim-deliver-payout`) can be merged the same way Phase 7 was —
-ask before pushing/merging, per this project's standing rule.
+### Gate test results (2026-08-09) — all 11 steps passed
+
+The founder ran the full walkthrough on-device, working around a real
+constraint: only one Android phone was available for testing (Expo Go on
+iPhone isn't compatible with this build's custom native dev client, so a
+second physical device wasn't an option). Worked around by having the
+founder be **customer, driver, and admin all on one account** for the
+solo-testable steps (self-claim block only cares about cooking vendor vs.
+driver vendor, not who the customer is) — a fresh fixture order was seeded
+with the founder as customer specifically for steps 7-9, letting them
+switch between the Orders tab (customer view) and Deliveries tab (driver
+view) on the same phone to verify messaging both directions, the driver-name
+display, and the release-to-pool behavior solo. The one piece that
+genuinely needs a second driver (a true cross-driver race) was already
+covered by the automated server-side race test, not re-verified by hand.
+
+One real bug surfaced, root-caused, fixed, and pushed as a follow-up
+commit to the same `phase-8-claim-deliver-payout` branch:
+
+**Completed deliveries stayed in "My Queue" forever (found at step 6).**
+After marking an order delivered, it correctly showed in History but also
+*stayed* in My Queue showing "Completed" — a driver's queue would grow
+without bound as they completed more deliveries. Root cause: the queue
+query filtered only on `delivery_claims.released_at is null`, but a
+successfully completed claim's `released_at` stays null forever too (it
+was never released, it finished normally) — the exact same trap already
+called out in `cron-stuck-delivery-watchdog`'s own code comments, just not
+applied to this query. Fixed in
+`apps/mobile/app/(app)/(tabs)/deliveries.tsx` by flipping the query's base
+table from `delivery_claims` to `vendor_suborders` and filtering on the
+suborder's own status (`claimed`/`en_route_to_pickup`/`picked_up`/
+`en_route_to_customer` = queue, anything else = history) — the real signal
+for "still in progress," same reasoning as the watchdog. Verified directly
+against the hosted DB before considering it fixed: a synthetic active claim
+correctly stayed in the queue query's results while a synthetic completed
+one was correctly excluded (and vice versa for the history query) — this
+is also where the `!inner` embedded-table filtering syntax
+(`.eq("delivery_claims.driver_vendor_id", ...)`) used in both queries got
+its first real exercise in this codebase.
+
+One non-bug worth recording: step 8's walkthrough text described the
+driver display as showing "your storefront name" — that was a documentation
+error, not a code error. `suborder_driver_display_name()` (migration 0041)
+was always designed to return the driver's personal `full_name`,
+deliberately mirroring `suborder_customer_display_name()`'s existing
+personal-name convention on the Kitchen screen. Confirmed with the founder
+this is the *desired* behavior (not a business name) — no code change
+needed, only my description of it was wrong.
+
+Also verified live (steps 10 and 11):
+- **10:** the real Stripe Transfer from the founder's own completed
+  delivery (`tr_1U2YMkFMh2QSmPlsnADTnv9y`, $6.39) was located and confirmed
+  directly in the Stripe Dashboard's Connect → Transfers view (test mode).
+- **11:** the founder's real claimed order was backdated 25 minutes via a
+  throwaway service-role update, the watchdog invoked manually, confirmed
+  it auto-released back to `ready` and disappeared from My Queue/reappeared
+  in Available on-device. (The watchdog also caught and cleaned up one
+  unrelated stale claim left over from earlier automated testing in the
+  same run — expected behavior, not a bug.)
+
+All throwaway fixture orders from this gate-test session (the seeded
+"solo order" left in `completed` status as harmless historical data, plus
+two `ready`-status ones used for the watchdog step) were deleted after use,
+confirmed via a direct query, per this project's established discipline.
+
+**Phase 8 is fully gate-tested. PR #17
+(`phase-8-claim-deliver-payout` → `main`) is open and ready to merge —
+ask the founder before merging, per this project's standing rule that
+pushes/merges need explicit sign-off each time.** Once merged, Phase 9
+(unclaimed-order fallback: T1/T2/T3 SMS/customer-offer/refund) can be
+scoped.
