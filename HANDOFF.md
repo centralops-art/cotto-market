@@ -2474,3 +2474,33 @@ Also verified live:
 **Phase 11 is fully gate-tested and merged** (PR #20, squash-merged to `main`
 as commit `9f55c34`). Phase 12 (polish, store submission, launch readiness)
 is next.
+
+**Known gap, flagged proactively by the founder, not urgent:** the region
+settings CRUD built this phase only supports editing the existing region —
+there's no "create a new region" flow anywhere in the admin app (`regions`
+has always been treated as a single-row fixture, seeded directly, per §3).
+**Founder's explicit call: defer this until the business is actually ready
+to expand to a second region** — don't build it speculatively. When that
+day comes, this needs a `dashboard/regions/new` page + a
+POST `/api/admin/regions` route (the existing `PATCH .../regions/[id]`
+route and `RegionForm` component should mostly just work for it). It also
+needs a region picker somewhere in the "Become a Vendor" flow -- confirmed
+by reading the code, not assumed: `apps/mobile/app/(app)/(tabs)/account.tsx`
+picks `region_id` via `.eq("is_active", true).limit(1).maybeSingle()`,
+silently defaulting every new vendor to whichever active region happens to
+come back first. Fine with exactly one region; needs a real choice once a
+second one exists.
+
+**2026-08-10, out-of-phase styling pass**: the admin app's visual theme now
+matches `cotto-web` (the marketing site) — warm cream backgrounds, brick-red
+primary / forest-green secondary / amber accent, Lora headings over Mulish
+body text, pill-shaped buttons with an offset-shadow press effect. Palette
+and fonts extracted directly from `cotto-web/index.html`'s CSS (see
+[PR #21](https://github.com/centralops-art/cotto-market/pull/21),
+squash-merged as commit `08c5c4c`). Also fixed a latent bug found in the
+process: `tailwind.config.ts` never had a `fontFamily` extension, so
+`font-sans` was silently falling back to the browser's default system font
+stack the entire time despite Inter being loaded via `next/font` — if a
+future session touches typography again, the fix (mapping `fontFamily.sans`/
+`.heading`/`.mono` to the `--font-*` CSS variables) is the pattern to keep
+following, not the old un-wired setup.
