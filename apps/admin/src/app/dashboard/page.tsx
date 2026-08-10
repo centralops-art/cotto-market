@@ -13,14 +13,26 @@ export default async function DashboardPage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-8">
       <h1 className="text-2xl font-bold">Central Ops Dashboard</h1>
       <p className="text-muted-foreground">Signed in as {admin.user.email}</p>
+      <Link href="/dashboard/kpis" className={cn(buttonVariants())}>
+        KPIs
+      </Link>
       <Link href="/dashboard/vendors" className={cn(buttonVariants())}>
         Vendors
+      </Link>
+      <Link href="/dashboard/customers" className={cn(buttonVariants())}>
+        Customers
       </Link>
       <Link href="/dashboard/orders" className={cn(buttonVariants())}>
         Orders
       </Link>
       <Link href="/dashboard/reviews" className={cn(buttonVariants())}>
         Flagged reviews
+      </Link>
+      <Link href="/dashboard/regions" className={cn(buttonVariants())}>
+        Region settings
+      </Link>
+      <Link href="/dashboard/settings" className={cn(buttonVariants())}>
+        Platform settings
       </Link>
       <SignOutButton />
     </main>

@@ -1,24 +1,17 @@
-# Cotto Marketplace — Handoff (Phase 10 merged, Phase 11 next)
+# Cotto Marketplace — Handoff (Phase 11 built, awaiting gate test)
 
-Last updated: 2026-08-10. Phases 6 through 10 are all merged to `main` and
-fully gate-tested (§15, §16, §18, §19, §20). Phase 10 (reviews, favorites
-polish, waitlist notifications, driver rating) squash-merged as commit
-`9e7fb3b` — all 10 acceptance-gate steps passed. Three real bugs surfaced
-during the walkthrough and were fixed before merge (a stale React Query
-cache key that left a stale "Leave a review" button visible, and a
-two-part bug where deleting a flagged review left a dangling driver
-rating that silently blocked resubmission — see §20's gate test results).
-
-**Phase 11 (admin dashboard: KPIs incl. delivery stats, vendor/customer
-lists, region & fee settings CRUD, payout split) is next and has not been
-started.** Before scoping it, read the note at the end of §20 — the
-founder already flagged a specific gap (`regions.dispatch_email` needs to
-become a list) that belongs in this phase.
+Last updated: 2026-08-09. Phases 6 through 10 are
+merged to `main` and fully gate-tested (§15, §16, §18, §19, §20). Phase 11
+(admin dashboard: KPIs incl. delivery network stats, vendor/customer lists +
+suspend, region settings CRUD, platform fee settings incl. automated free-trial
+expiry) is **built, server-side verified, and ready for the founder's gate
+test** — see §21. Not yet merged.
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
 as-is for historical record of how Phase 6 was built and verified; §15 has
-its final close-out; §16 has Phase 7; §19 has Phase 9; §20 has Phase 10.)
+its final close-out; §16 has Phase 7; §19 has Phase 9; §20 has Phase 10;
+§21 has Phase 11.)
 
 ---
 
@@ -2227,3 +2220,187 @@ mirroring `regions.zip_codes`'s existing array-column pattern) so a real
 ops team's dispatch alerts aren't capped at one recipient; (2) whatever
 UI validates region settings should account for the T1 < T2 < T3 ordering
 `cron-unclaimed-delivery-check` assumes but never itself validates.
+
+---
+
+## 21. Phase 11 — Admin dashboard (2026-08-09, built + server-side verified, not yet merged)
+
+Scope per `Cotto_MVP_Spec.md` row 11 (KPIs incl. delivery stats, vendor/customer
+lists, region & fee settings, payout split) plus the acceptance-gate items
+under "Central Ops can:" (§6): approve/reject/suspend vendors and customers,
+see live orders/GMV/platform-fee/delivery-network stats for 7/30 days, set
+platform fee % globally and per-vendor (incl. trial), edit region settings.
+
+Four decisions confirmed with the founder before building:
+1. **Customer suspend blocks checkout only** — no full auth lockout. A
+   suspended customer can still sign in and browse; `profiles.status`
+   (migration 0050) gates `checkout-create-payment-intent` specifically.
+2. **Vendor suspend hides the storefront immediately; in-flight orders/
+   suborders are left untouched** — consistent with this project's standing
+   rule (first stated in Phase 9) of never disrupting money already in
+   motion. `vendors.status = 'suspended'` already fell out of
+   `vendors_select`'s public-visibility branch for free (migration 0010) —
+   no RLS change needed, just a new admin action to reach that status from
+   `active` (previously only reachable via the pending-review reject flow).
+3. **Free-trial fee override gets full automation**, not just a manual admin
+   field. `vendors.platform_fee_pct` / `free_trial_ends_at` already existed
+   as schema (flagged in HANDOFF.md §3 as "not built yet") — this phase adds
+   the admin UI to set them *and* a new daily cron
+   (`cron-vendor-trial-expiry-check`, migration 0052) that resets the
+   override back to the platform default once the trial date passes. A
+   `free_trial_ends_at` left blank means the override is permanent (verified
+   the cron leaves those untouched, see below).
+4. **KPI dashboard: core delivery stats + driver leaderboard + per-region
+   breakdown.** Active delivery partners, % of deliveries claimed before T1,
+   avg time-to-claim, T3 auto-refund count, a completed-deliveries/avg-rating
+   leaderboard per driver, and GMV/order-count broken out by region.
+
+**What shipped:**
+
+1. **Migrations 0050-0053:**
+   - 0050: `profiles.status` (`active`/`suspended`) + `guard_profile_status_change`
+     trigger (mirrors the existing `guard_profile_role_change` pattern from
+     migration 0010 exactly) so a customer can't smuggle their own status
+     change through the existing `profiles_update_own_or_admin` RLS policy.
+   - 0051: `regions.dispatch_email` (single `text`) → `dispatch_emails`
+     (`text[]`, mirrors the `zip_codes` array pattern), existing single value
+     migrated into a one-element array. Also adds
+     `regions_claim_window_order`, a `CHECK` constraint enforcing
+     `T1 < T2 < T3` — closes the known gap flagged at the end of §20.
+   - 0052: daily `pg_cron` schedule for `cron-vendor-trial-expiry-check`
+     (13:45 UTC, same stagger pattern as every other daily cron in this
+     project).
+   - 0053: `vendors.suspended_reason` / `profiles.suspended_reason` (mirrors
+     `vendors.rejected_reason` from migration 0002) so an admin's reason is
+     visible on the record, not just in `audit_log`.
+2. **Edge functions:**
+   - `checkout-create-payment-intent` now checks the caller's
+     `profiles.status` immediately after resolving the authenticated user
+     (before any cart lookup) and returns a 403 with a clear message if
+     suspended.
+   - `cron-unclaimed-delivery-check` and `cron-stuck-delivery-watchdog`
+     updated for `dispatch_emails` (array) instead of `dispatch_email`
+     (single string) — Resend's `to` field accepts an array directly, so
+     this was a straight rename plus an emptiness check, no per-recipient
+     loop needed.
+   - New `cron-vendor-trial-expiry-check` (daily): resets
+     `platform_fee_pct`/`free_trial_ends_at` to null for any vendor whose
+     trial date has passed, writes an `audit_log` row per vendor, and sends
+     a best-effort email to the vendor (not just an admin warning, since
+     this isn't punitive — matches the never-block-on-a-notification-failure
+     pattern from `stripe-webhook`/`update-suborder-status`).
+3. **Admin app (`apps/admin`):**
+   - `dashboard/vendors/[id]`: `VendorActions` extended with Suspend
+     (active → suspended, reason required, emails the vendor) and Reactivate
+     (suspended → active) actions, alongside the existing pending-review
+     Approve/Reject. New `FeeSettings` component on the same page for the
+     per-vendor platform-fee override + trial-end date.
+   - New `dashboard/customers` (list, name/email/role/status, email sourced
+     via `auth.admin.listUsers()` — profiles has no email column) and
+     `dashboard/customers/[id]` (detail + Suspend/Reactivate + recent orders).
+   - New `dashboard/regions` (list) and `dashboard/regions/[id]` (edit form:
+     dispatch contact name/phone, dispatch emails as an add/remove list,
+     base + per-mile delivery fee, driver payout split %, T1/T2/T3 claim
+     windows with client-side ordering validation before it ever reaches the
+     DB constraint, conflict rule).
+   - New `dashboard/settings`: `system_settings.default_platform_fee_pct` and
+     `free_trial_default_days`.
+   - New `dashboard/kpis`: 7d/30d toggle; live-order count (in-flight
+     suborders right now, not windowed), GMV and platform-fee revenue
+     (windowed, counts `paid`/`refunded`/`partially_refunded` orders — a
+     later refund doesn't retroactively remove an order from GMV, same
+     "what actually transacted" framing `refund-suborder.ts` uses);
+     delivery network stats (active delivery partners, % claimed before T1,
+     avg minutes-to-claim, T3 auto-refund count — computed by joining
+     `vendor_suborders.ready_at` against `delivery_claims.claimed_at` and
+     each suborder's own region's `claim_window_t1_minutes`); a driver
+     leaderboard (completed deliveries + avg `customer_rating` per driver,
+     windowed by `claimed_at`); and a per-region GMV/order-count breakdown.
+   - Nav links added to `dashboard/page.tsx` for all of the above.
+
+**A schema note worth recording**: `vendors.status = 'suspended'` was already
+usable by `vendors_select`'s RLS policy (migration 0010: only `status = 'active'`
+is customer-visible) and already blocked from vendor self-service via
+`guard_vendor_owner_update` (migration 0010: owners can only toggle between
+`active`/`unpublished`) — both written back in the original security-review
+pass (§13) even though nothing in the admin app could reach `suspended` from
+`active` until this phase. Confirmed via the verification script below rather
+than assumed.
+
+**Verified this session (server-side, throwaway-fixture discipline, same as
+every prior phase — a Node script against the hosted Supabase using real
+per-user sessions via `auth.admin.generateLink` + `verifyOtp`, deleted after
+use, confirmed clean via `git status`): 22/22 checks passed**, including:
+- A customer cannot self-suspend (`guard_profile_status_change` blocks it);
+  the service role can. `checkout-create-payment-intent` returns a 403 with
+  a suspension-specific message for a suspended customer's session and lets
+  an active customer's session through to the (expected-to-fail-differently)
+  cart lookup, proving the gate fires specifically on suspension.
+- A vendor owner cannot self-suspend their own active vendor
+  (`guard_vendor_owner_update` blocks it); the service role can. A suspended
+  vendor is confirmed invisible to an unauthenticated stranger's `vendors`
+  query and visible again immediately after reactivation.
+- The DB rejects a `T1 >= T2` claim-window update (the new check constraint);
+  `dispatch_emails` round-trips as a real 2-element array, not a stringified
+  list.
+- `cron-vendor-trial-expiry-check`: a fixture vendor with an expired
+  `free_trial_ends_at` gets `platform_fee_pct`/`free_trial_ends_at` reset to
+  null and an `audit_log` row; a **separate** fixture with a fee override but
+  no `free_trial_ends_at` (a permanent override) is confirmed untouched by
+  the same cron run.
+- `cron-unclaimed-delivery-check` and `cron-stuck-delivery-watchdog` both run
+  cleanly end-to-end against the renamed `dispatch_emails` column (regression
+  check — both previously referenced the now-dropped `dispatch_email`
+  column and would have thrown on their next real cron tick otherwise).
+
+`pnpm typecheck && pnpm lint && pnpm test` all pass across all three
+workspaces.
+
+**Not verified this session** (needs a human clicking through the real admin
+UI, same limitation noted in every prior phase for `apps/admin` — no local
+Docker/Supabase to run the Next.js dev server against, and this phase has no
+mobile-app changes to test): every new admin page and form itself — the
+Suspend/Reactivate buttons and their confirm-reason flow, the fee-override
+and platform-settings forms, the region-settings form's client-side
+validation and the emails add/remove list, and the KPI dashboard's actual
+rendered numbers against real data. The server-side script above proves the
+underlying DB guarantees (RLS, guard triggers, check constraint, cron
+correctness) hold; it does not prove the UI wired up to them correctly.
+
+### Gate-test walkthrough
+
+Sign in to the admin app as `CPITTS1183@gmail.com`.
+
+1. Open **Customers**, pick a test customer profile that isn't your own
+   admin account, open its detail page, tap **Suspend**, enter a reason,
+   confirm. Confirm the badge flips to "suspended" and the reason appears.
+   Ask me to seed a cart + attempt a checkout as that customer (or use a
+   throwaway test account of your own) and confirm checkout is blocked with
+   a clear "suspended" message. Tap **Reactivate** and confirm checkout
+   works again.
+2. Open **Vendors** → an `active` vendor that isn't Tester Kitchen (ask me
+   to point you at a safe throwaway one, or we seed a fresh fixture). Tap
+   **Suspend**, enter a reason, confirm. Confirm the vendor's storefront
+   disappears from the mobile app's Browse tab / search within a few
+   seconds. Tap **Reactivate** and confirm it reappears.
+3. On that same vendor's detail page, set a **Fee override** to `0` and a
+   **Trial ends on** date of today, save. Ask me to backdate it (or wait)
+   and manually trigger `cron-vendor-trial-expiry-check`; confirm the fee
+   override clears back to the default and you receive the "trial ended"
+   email at the vendor's address.
+4. Open **Platform settings**, change the default platform fee %, save,
+   confirm it persists on reload.
+5. Open **Region settings** → North Shore Chicago. Add a dispatch email,
+   remove it, add a different one, save — confirm it persists. Try setting
+   T1 to a value greater than T2 and confirm the form blocks the save with
+   a clear message instead of a raw error.
+6. Open **KPIs**. Confirm the 7-day/30-day toggle changes the numbers.
+   Cross-check GMV against a couple of known recent test orders' totals.
+   Confirm the delivery network stats and driver leaderboard show sensible
+   numbers if you have recent delivery test fixtures, or ask me to seed a
+   couple of claimed/completed delivery fixtures first if the numbers all
+   read zero.
+
+**Not yet merged** — this branch needs `pnpm typecheck`/`lint`/`test`
+re-confirmed clean (already done, see above) and the founder's gate-test
+pass before merge, per this project's standing rule.

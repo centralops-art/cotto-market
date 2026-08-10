@@ -51,13 +51,13 @@ type Candidate = {
       claim_window_t1_minutes: number;
       claim_window_t2_minutes: number;
       claim_window_t3_minutes: number;
-      dispatch_email: string | null;
+      dispatch_emails: string[];
     } | null;
   } | null;
   orders: { customer_profile_id: string; payment_intent_id: string | null; total_cents: number; status: string } | null;
 };
 
-async function sendEmail(resendKey: string | undefined, to: string, subject: string, text: string): Promise<{ ok: boolean; error?: string }> {
+async function sendEmail(resendKey: string | undefined, to: string | string[], subject: string, text: string): Promise<{ ok: boolean; error?: string }> {
   if (!resendKey) return { ok: false, error: "RESEND_API_KEY not configured" };
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
       .from("vendor_suborders")
       .select(
         "id, order_id, vendor_id, ready_at, delivery_cycle, subtotal_cents, delivery_fee_cents, tax_cents, stripe_transfer_id, delivery_address, " +
-          "vendors(storefront_name, region_id, regions(claim_window_t1_minutes, claim_window_t2_minutes, claim_window_t3_minutes, dispatch_email)), " +
+          "vendors(storefront_name, region_id, regions(claim_window_t1_minutes, claim_window_t2_minutes, claim_window_t3_minutes, dispatch_emails)), " +
           "orders(customer_profile_id, payment_intent_id, total_cents, status)"
       )
       .eq("fulfillment", "delivery")
@@ -149,12 +149,12 @@ Deno.serve(async (req) => {
 
       // --- T1: dispatch alert (email only -- see file header) ---
       if (elapsedMinutes >= region.claim_window_t1_minutes && !forThisCycle(events, "t1_sms_sent")) {
-        if (region.dispatch_email) {
+        if (region.dispatch_emails.length > 0) {
           const addr = so.delivery_address;
           const addrText = addr ? `${addr.line1 ?? ""}, ${addr.city ?? ""}, ${addr.state ?? ""} ${addr.zip ?? ""}`.trim() : "unknown address";
           const { error: emailErr } = await sendEmail(
             resendKey,
-            region.dispatch_email,
+            region.dispatch_emails,
             `Unclaimed delivery needs attention -- ${so.vendors?.storefront_name ?? "order"}`,
             `A delivery from ${so.vendors?.storefront_name ?? "a vendor"} has been ready and unclaimed for over ${region.claim_window_t1_minutes} minutes.\n\nItems: ${itemsText}\nDelivery address: ${addrText}\n\nView this order: ${adminLink}\n\nPlease help find a driver for this order.`
           );

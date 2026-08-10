@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/require-admin";
 import { StatusBadge } from "@/components/ui/badge";
 import { VendorActions } from "./vendor-actions";
 import { DeliveryProfileActions } from "./delivery-profile-actions";
+import { FeeSettings } from "./fee-settings";
 
 export default async function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
@@ -18,6 +19,8 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
     const { data } = await admin.service.storage.from("cfpm-certs").createSignedUrl(vendor.cfpm_cert_url, 300);
     cfpmSignedUrl = data?.signedUrl ?? null;
   }
+
+  const { data: settings } = await admin.service.from("system_settings").select("default_platform_fee_pct").eq("id", 1).single();
 
   const { data: deliveryProfile } = await admin.service
     .from("vendor_delivery_profiles")
@@ -56,6 +59,11 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
           Last rejection reason: {vendor.rejected_reason}
         </p>
       )}
+      {vendor.suspended_reason && (
+        <p className="mt-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          Suspension reason: {vendor.suspended_reason}
+        </p>
+      )}
 
       <dl className="mt-6 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
         <dt className="text-muted-foreground">Tagline</dt>
@@ -89,6 +97,13 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
       </div>
 
       <VendorActions vendorId={vendor.id} status={vendor.status} />
+
+      <FeeSettings
+        vendorId={vendor.id}
+        platformFeePct={vendor.platform_fee_pct}
+        freeTrialEndsAt={vendor.free_trial_ends_at}
+        defaultPlatformFeePct={settings?.default_platform_fee_pct ?? 8}
+      />
 
       {deliveryProfile && (
         <div className="mt-10 border-t border-border pt-6">

@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     const { data: stuckCandidates, error } = await service
       .from("vendor_suborders")
       .select(
-        "id, status, vendors(storefront_name, regions(dispatch_email)), delivery_claims(id, claimed_at, en_route_to_pickup_at, picked_up_at, en_route_to_customer_at, stuck_notified_at, driver_vendor_id, released_at)"
+        "id, status, vendors(storefront_name, regions(dispatch_emails)), delivery_claims(id, claimed_at, en_route_to_pickup_at, picked_up_at, en_route_to_customer_at, stuck_notified_at, driver_vendor_id, released_at)"
       )
       .in("status", ["claimed", "en_route_to_pickup", "picked_up", "en_route_to_customer"]);
     if (error) throw error;
@@ -92,19 +92,19 @@ Deno.serve(async (req) => {
       const since = so.status === "en_route_to_customer" && claim.en_route_to_customer_at ? claim.en_route_to_customer_at : claim.picked_up_at;
       if (!since || now - new Date(since).getTime() < STUCK_THRESHOLD_MS) continue;
 
-      const cookVendor = so.vendors as unknown as { storefront_name: string; regions: { dispatch_email: string | null } | null } | null;
-      const dispatchEmail = cookVendor?.regions?.dispatch_email;
+      const cookVendor = so.vendors as unknown as { storefront_name: string; regions: { dispatch_emails: string[] } | null } | null;
+      const dispatchEmails = cookVendor?.regions?.dispatch_emails ?? [];
       const { data: driverVendor } = await service.from("vendors").select("storefront_name").eq("id", claim.driver_vendor_id).single();
 
       const resendKey = Deno.env.get("RESEND_API_KEY");
-      if (dispatchEmail && resendKey) {
+      if (dispatchEmails.length > 0 && resendKey) {
         try {
           const res = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               from: "Cotto <notifications@cottomarket.com>",
-              to: dispatchEmail,
+              to: dispatchEmails,
               subject: `Stuck delivery needs attention -- ${cookVendor?.storefront_name ?? "order"}`,
               text: `A delivery from ${cookVendor?.storefront_name ?? "a vendor"} has been stuck in status "${so.status}" for over 20 minutes.\n\nDriver: ${driverVendor?.storefront_name ?? claim.driver_vendor_id}\nSuborder: ${so.id}\n\nThis order cannot be auto-released (the food has already left the kitchen) -- please follow up with the driver directly.`,
             }),

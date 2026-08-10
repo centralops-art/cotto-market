@@ -634,6 +634,8 @@ export type Database = {
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
           sms_opt_in: boolean
+          status: Database["public"]["Enums"]["profile_status"]
+          suspended_reason: string | null
           updated_at: string
           username: string | null
         }
@@ -646,6 +648,8 @@ export type Database = {
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           sms_opt_in?: boolean
+          status?: Database["public"]["Enums"]["profile_status"]
+          suspended_reason?: string | null
           updated_at?: string
           username?: string | null
         }
@@ -658,6 +662,8 @@ export type Database = {
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           sms_opt_in?: boolean
+          status?: Database["public"]["Enums"]["profile_status"]
+          suspended_reason?: string | null
           updated_at?: string
           username?: string | null
         }
@@ -673,7 +679,7 @@ export type Database = {
           delivery_conflict_rule: Database["public"]["Enums"]["delivery_conflict_rule"]
           delivery_payout_split_pct: number
           dispatch_contact_name: string | null
-          dispatch_email: string | null
+          dispatch_emails: string[]
           dispatch_phone: string | null
           health_regs_url: string | null
           id: string
@@ -693,7 +699,7 @@ export type Database = {
           delivery_conflict_rule?: Database["public"]["Enums"]["delivery_conflict_rule"]
           delivery_payout_split_pct?: number
           dispatch_contact_name?: string | null
-          dispatch_email?: string | null
+          dispatch_emails?: string[]
           dispatch_phone?: string | null
           health_regs_url?: string | null
           id?: string
@@ -713,7 +719,7 @@ export type Database = {
           delivery_conflict_rule?: Database["public"]["Enums"]["delivery_conflict_rule"]
           delivery_payout_split_pct?: number
           dispatch_contact_name?: string | null
-          dispatch_email?: string | null
+          dispatch_emails?: string[]
           dispatch_phone?: string | null
           health_regs_url?: string | null
           id?: string
@@ -1110,6 +1116,7 @@ export type Database = {
           status: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
           stripe_account_id: string | null
+          suspended_reason: string | null
           tagline: string | null
           theme_palette: Json
           updated_at: string
@@ -1149,6 +1156,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
           stripe_account_id?: string | null
+          suspended_reason?: string | null
           tagline?: string | null
           theme_palette?: Json
           updated_at?: string
@@ -1188,6 +1196,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name?: string
           stripe_account_id?: string | null
+          suspended_reason?: string | null
           tagline?: string | null
           theme_palette?: Json
           updated_at?: string
@@ -1413,6 +1422,7 @@ export type Database = {
         | "refunded"
         | "partially_refunded"
         | "cancelled"
+      profile_status: "active" | "suspended"
       suborder_status:
         | "received"
         | "confirmed"
@@ -1606,6 +1616,7 @@ export const Constants = {
         "partially_refunded",
         "cancelled",
       ],
+      profile_status: ["active", "suspended"],
       suborder_status: [
         "received",
         "confirmed",
