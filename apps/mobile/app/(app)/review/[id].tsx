@@ -119,18 +119,34 @@ export default function LeaveReview() {
         if (itemsError) throw itemsError;
       }
 
+      // Best-effort, not fatal to the review submission -- the review and
+      // review_items rows above have already committed as independent
+      // network calls by this point, so a driver-rating failure here (e.g.
+      // it was already rated once, on a review since deleted by an admin)
+      // must not read as "nothing was saved." Same pattern this codebase
+      // already uses for notification sends (stripe-webhook,
+      // update-suborder-status): the secondary action's failure is
+      // surfaced separately, not folded into the primary action's result.
+      let driverRatingWarning: string | null = null;
       if (suborderQuery.data.fulfillment === "delivery" && driverRating > 0) {
         const { error: driverError } = await supabase.rpc("rate_delivery_claim", {
           so_id: suborderQuery.data.id,
           rating: driverRating,
           comment: driverComment.trim() || undefined,
         });
-        if (driverError) throw driverError;
+        if (driverError) driverRatingWarning = driverError.message;
       }
+      return { driverRatingWarning };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["existing_review", id] });
-      Alert.alert("Thanks for the review!", "", [{ text: "OK", onPress: () => router.back() }]);
+      if (result?.driverRatingWarning) {
+        Alert.alert("Review saved", `Your review was saved, but the driver rating couldn't be submitted: ${result.driverRatingWarning}`, [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      } else {
+        Alert.alert("Thanks for the review!", "", [{ text: "OK", onPress: () => router.back() }]);
+      }
     },
     onError: (err) => {
       setUploading(false);
