@@ -2401,6 +2401,9 @@ Sign in to the admin app as `CPITTS1183@gmail.com`.
    couple of claimed/completed delivery fixtures first if the numbers all
    read zero.
 
-**Not yet merged** — this branch needs `pnpm typecheck`/`lint`/`test`
-re-confirmed clean (already done, see above) and the founder's gate-test
-pass before merge, per this project's standing rule.
+**[PR #20](https://github.com/centralops-art/cotto-market/pull/20)
+(`phase-11-admin-dashboard` → `main`) is open, not yet merged.**
+`pnpm typecheck`/`lint`/`test` are already clean and the server-side
+verification above already passed — what's left is the founder's hands-on
+gate test of the admin UI (walkthrough above), then ask before merging, per
+this project's standing rule.
