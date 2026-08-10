@@ -1,11 +1,17 @@
-# Cotto Marketplace — Handoff (Phase 11 built, awaiting gate test)
+# Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 next)
 
-Last updated: 2026-08-09. Phases 6 through 10 are
-merged to `main` and fully gate-tested (§15, §16, §18, §19, §20). Phase 11
-(admin dashboard: KPIs incl. delivery network stats, vendor/customer lists +
-suspend, region settings CRUD, platform fee settings incl. automated free-trial
-expiry) is **built, server-side verified, and ready for the founder's gate
-test** — see §21. Not yet merged.
+Last updated: 2026-08-10. Phases 6 through 11 are all merged to `main` and
+fully gate-tested (§15, §16, §18, §19, §20, §21). Phase 11 (admin dashboard:
+KPIs incl. delivery network stats, vendor/customer lists + suspend, region
+settings CRUD, platform fee settings incl. automated free-trial expiry)
+squash-merged as commit `9f55c34` — all 6 acceptance-gate steps passed live
+against the Vercel preview deployment, no bugs found during the walkthrough
+(the one hiccup — a stuck Metro bundler on the founder's mobile dev client —
+was an unrelated local dev-environment issue, not a Phase 11 bug; see §21's
+gate-test-results note).
+
+**Phase 12 (polish, store submission, launch readiness — see the spec's
+phase table) is next and has not been started.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -2401,9 +2407,70 @@ Sign in to the admin app as `CPITTS1183@gmail.com`.
    couple of claimed/completed delivery fixtures first if the numbers all
    read zero.
 
-**[PR #20](https://github.com/centralops-art/cotto-market/pull/20)
-(`phase-11-admin-dashboard` → `main`) is open, not yet merged.**
-`pnpm typecheck`/`lint`/`test` are already clean and the server-side
-verification above already passed — what's left is the founder's hands-on
-gate test of the admin UI (walkthrough above), then ask before merging, per
-this project's standing rule.
+### Gate test results (2026-08-10) — all 6 steps passed
+
+The founder ran the full walkthrough live against [PR #20](https://github.com/centralops-art/cotto-market/pull/20)'s
+Vercel preview deployment (admin) and the mobile dev client. No product bugs
+surfaced. One process note and one real-but-unrelated hiccup, both handled
+inline:
+
+**1. Step 1's customer fixture turned out to be leftover debris from this
+session's own earlier server-side verification script (Claude's mistake, not
+the founder's).** The script that produced the "22/22 checks passed" result
+above actually ran twice — its first attempt crashed partway through (a bug
+in how it read a freshly-created session's access token, fixed before the
+second run) *after* creating two throwaway auth users and a throwaway vendor,
+but *before* reaching its own cleanup step. That first run's fixtures were
+never deleted, unlike the second (successful) run's, which cleaned up after
+itself as intended. The founder picked one of those orphaned users
+(`phase11-verify-vendorowner-...@example.com`) for step 1 without knowing it
+was debris rather than an intentionally-seeded test account. Confirmed
+harmless (a disposable test account, not a real person) and used for the
+test anyway; all three leftover rows (the extra vendor + both auth users)
+were deleted afterward, confirmed via a direct query. **Lesson: a
+verification script's cleanup step must run even on a crash path — this one
+didn't, and the debris briefly leaked into a live gate test.** Worth
+wrapping fixture creation/cleanup in try/finally in future verification
+scripts rather than a linear top-to-bottom script that only cleans up on the
+happy path.
+**2. The mobile Metro bundler got stuck at 0% mid-step-2, unrelated to any
+Phase 11 change** (Phase 11 touched zero files under `apps/mobile`). Resolved
+with a standard `expo start --clear` cache-clear restart. Worth noting
+because it briefly looked like a caching bug in the Browse tab (Second Test
+Kitchen was still visible after a suspend + soft reload) — that turned out to
+be genuine React Query staleness from the tab having stayed mounted since
+before the suspend (same class of issue as the Favorites-tab bug fixed back
+in Phase 4), not a bug in the suspend feature itself. A truly fresh cold
+launch (after the bundler was unstuck) correctly showed the vendor gone.
+
+Also verified live:
+- **Step 1**: reactivating the suspended customer was independently
+  confirmed server-side — the same checkout call that returned 403
+  ("Your account has been suspended...") while suspended returned 404 ("Cart
+  not found or not yours", the expected next failure for a bogus test cart
+  ID) immediately after reactivation, proving the suspension check
+  specifically was what changed.
+- **Step 2**: Second Test Kitchen's suspend/reactivate was independently
+  confirmed server-side both directions — an anonymous customer-facing query
+  returned nothing while suspended, and the real row again once reactivated.
+- **Step 3**: backdating Second Test Kitchen's trial and triggering
+  `cron-vendor-trial-expiry-check` correctly reset `platform_fee_pct: 0` →
+  `null` and cleared `free_trial_ends_at`, with a matching `audit_log` row.
+  The trial-ended notification email itself bounced (`emailFailures: 1`) —
+  expected, since the fixture vendor's email is `second-test-kitchen@example.com`,
+  not a real deliverable address; the send was attempted and failed
+  gracefully without blocking the reset, exactly as designed.
+- **Step 6**: the founder screenshotted Stripe's raw Payments ledger and
+  asked for a reconciliation against the KPI page's $126.67 GMV / $3.48
+  platform fee / 8 transacted orders for the last-7-days window — recomputing
+  directly from the `orders` table matched exactly. Stripe's ledger shows
+  more entries than that because it retains PaymentIntents forever, while
+  this project deliberately deletes throwaway gate-test `orders` rows
+  afterward (per the established fixture-cleanup discipline) and Stripe also
+  includes at least one non-order infrastructure transaction ("Phase 8 smoke
+  test -- top up available balance") — neither should appear in GMV, and
+  neither did.
+
+**Phase 11 is fully gate-tested and merged** (PR #20, squash-merged to `main`
+as commit `9f55c34`). Phase 12 (polish, store submission, launch readiness)
+is next.
