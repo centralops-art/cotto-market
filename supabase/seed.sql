@@ -3,7 +3,7 @@
 
 insert into public.regions (
   name, slug, zip_codes,
-  dispatch_contact_name, dispatch_email, dispatch_phone,
+  dispatch_contact_name, dispatch_emails, dispatch_phone,
   base_delivery_fee_cents, per_mile_fee_cents,
   delivery_payout_split_pct, claim_window_t1_minutes, claim_window_t2_minutes, claim_window_t3_minutes,
   delivery_conflict_rule, is_active
@@ -20,7 +20,7 @@ insert into public.regions (
     '60040',                   -- Highwood
     '60062'                    -- Northbrook
   ],
-  null, null, null, -- dispatch contact: placeholder, founder to fill in
+  null, '{}'::text[], null, -- dispatch contact: placeholder, founder to fill in
   499,  -- $4.99 base delivery fee
   150,  -- $1.50 per mile
   80,   -- 80% driver / 20% Cotto

@@ -123,6 +123,11 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser();
     if (!user) return json({ error: "Not signed in" }, 401);
 
+    const { data: callerProfile } = await service.from("profiles").select("status").eq("id", user.id).maybeSingle();
+    if (callerProfile?.status === "suspended") {
+      return json({ error: "Your account has been suspended. Contact support if you believe this is a mistake." }, 403);
+    }
+
     const { data: cart, error: cartError } = await supabase
       .from("carts")
       .select("id, profile_id, status")
