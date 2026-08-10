@@ -1,17 +1,19 @@
-# Cotto Marketplace — Handoff (Phase 10 built, awaiting founder gate test)
+# Cotto Marketplace — Handoff (Phase 10 merged, Phase 11 next)
 
-Last updated: 2026-08-09. Phases 6, 7, 8, and 9 are all merged to `main`
-and fully gate-tested (§15, §16, §18, §19). Phase 9 (unclaimed delivery
-fallback: T1/T2/T3) squash-merged as commit `3bc9903` — all 7
-acceptance-gate steps passed, including a live cross-check that a real
-driver claim beats a pending customer offer. Four real bugs surfaced
-during the walkthrough and were fixed before merge (illegible suborder
-UUIDs in four separate emails, a swallowed error message, and a missing
-delivery-address display — see §19's gate test results).
+Last updated: 2026-08-10. Phases 6 through 10 are all merged to `main` and
+fully gate-tested (§15, §16, §18, §19, §20). Phase 10 (reviews, favorites
+polish, waitlist notifications, driver rating) squash-merged as commit
+`9e7fb3b` — all 10 acceptance-gate steps passed. Three real bugs surfaced
+during the walkthrough and were fixed before merge (a stale React Query
+cache key that left a stale "Leave a review" button visible, and a
+two-part bug where deleting a flagged review left a dangling driver
+rating that silently blocked resubmission — see §20's gate test results).
 
-**Phase 10 (reviews, favorites polish, waitlist notifications, including
-driver rating) is built and server-side verified — see §20. Not yet
-merged, awaiting the founder's gate test.**
+**Phase 11 (admin dashboard: KPIs incl. delivery stats, vendor/customer
+lists, region & fee settings CRUD, payout split) is next and has not been
+started.** Before scoping it, read the note at the end of §20 — the
+founder already flagged a specific gap (`regions.dispatch_email` needs to
+become a list) that belongs in this phase.
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -1957,7 +1959,7 @@ notifications, including driver rating) is next.
 
 ---
 
-## 20. Phase 10 — Reviews, favorites polish, waitlist notifications, driver rating (2026-08-09, built, awaiting founder gate test)
+## 20. Phase 10 — Reviews, favorites polish, waitlist notifications, driver rating (2026-08-09/10, built, fully gate-tested and merged)
 
 Scope per `Cotto_MVP_Spec.md` §3.4 item 9 / §3.7-adjacent table row 10: after
 a completed order, prompt the customer to review each item (1–5 stars +
@@ -2138,7 +2140,90 @@ prior phase's gate test if there's no real completed order handy yet.
     `cron-waitlist-restock-check`; confirm the "back in stock" email
     arrives.
 
-**Phase 10 is built and server-side verified. PR #19
-(`phase-10-reviews-favorites-waitlist` → `main`) is open and ready to
-merge — ask the founder before merging, per this project's standing
-rule.**
+### Gate test results (2026-08-09/10) — all 10 steps passed
+
+The founder ran the full walkthrough live against PR #19's Vercel preview
+deployment (admin) and the mobile dev client, seeded with two real
+throwaway orders from Second Test Kitchen (a completed pickup order and a
+completed delivery order with a delivered claim, so both fixtures show up
+in the real Orders tab rather than needing a synthetic API-level check).
+Three real bugs surfaced, all root-caused, fixed, and pushed as follow-up
+commits to the same `phase-10-reviews-favorites-waitlist` branch (not
+squashed into the original phase commit, consistent with this project's
+established convention):
+
+**1. The "Leave a review" button didn't disappear after submitting (found
+at step 3).** `order-tracking/[id].tsx` and `review/[id].tsx` each had
+their own `existingReviewQuery` under different React Query cache keys
+(`["existing_review", id]` vs. `["existing_review", id, profile?.id]`), so
+the review screen's post-submit `invalidateQueries` call never touched the
+tracking screen's cached "no review yet" result — the button stayed
+visible until the screen was unmounted and remounted. Fixed by unifying
+both to the same key. Also added a "You've already reviewed this order"
+message in place of the button once a review exists, instead of silently
+just hiding it with no confirmation — the founder correctly flagged the
+missing message as confusing in the same step.
+
+**2. Deleting a flagged review left a dangling driver rating that
+permanently blocked resubmission (found at step 7, a two-part bug).** A
+review and its driver rating live in separate tables with no FK
+relationship (`reviews` vs. `delivery_claims.customer_rating`, set by the
+Phase 10 `rate_delivery_claim` RPC), so `api/admin/reviews/[id]/delete`
+only cleared the review — `rate_delivery_claim`'s one-time guard then
+permanently rejected a fresh driver rating on any resubmitted review for
+that order, with nothing on record to explain why. Compounding it: the
+mobile review-submission mutation wasn't atomic — by the time the driver-
+rating call hit that dangling state and threw, the `reviews` +
+`review_items` inserts immediately before it had already committed as
+independent network calls. The UI surfaced a bare error with no success
+message, so the founder backed out believing nothing had saved — but a
+real review row had, in fact, already been created. Fixed two ways:
+the admin delete route now also clears
+`delivery_claims.customer_rating`/`customer_rating_comment` for the
+review's suborder (deleting a review is meant to fully undo the customer's
+review action for that order, including the bundled driver rating); and
+the driver-rating call inside the submit mutation is now best-effort,
+matching this codebase's existing pattern for secondary notification sends
+(`stripe-webhook`, `update-suborder-status`) — a failure there now surfaces
+as "Review saved, but the driver rating couldn't be submitted: `<reason>`"
+instead of reading as a total failure. The dangling state this had already
+produced in the founder's live gate-test data (an orphaned review, a stuck
+`customer_rating`) was cleaned up directly, confirmed via a direct query,
+and the founder re-ran the delete→resubmit cycle afterward to confirm a
+clean pass.
+
+Also verified live:
+- **Step 6** (report): reporting a review from a second test account
+  ("Threes Kitchen") made it disappear from the public storefront list
+  immediately, confirming `is_flagged` correctly gates `reviews_select`'s
+  public-facing branch in real time, not just in the server-side test
+  suite.
+- **Step 8** (driver rating, after the fix): a fresh review + 5-star driver
+  rating was submitted cleanly on the second attempt; confirmed directly
+  against `delivery_claims.customer_rating` that it landed as `5`, matching
+  the review's own overall rating.
+- **Step 10** (waitlist restock): the founder favorited and waitlisted the
+  real, reusable "Peanut Butter Cookie is sold out" fixture (§10); Claude
+  flipped `is_sold_out` false, manually triggered
+  `cron-waitlist-restock-check` (`{notified: 1, emailFailures: 0}`), the
+  founder confirmed the email arrived, and the fixture was restored to
+  `is_sold_out: true` afterward so it stays reusable for future phases.
+
+**Phase 10 is fully gate-tested and merged** (PR #19, squash-merged to
+`main` as commit `9e7fb3b`). Phase 11 (admin dashboard) is up next — see
+the note below before scoping it.
+
+**Known gap to fold into Phase 11's scope, flagged proactively (the
+founder already raised this once during Phase 9, 2026-08-09): the admin
+app has no UI to edit `regions` row settings at all** (dispatch contact,
+base/per-mile delivery fee, delivery payout split %, claim window
+T1/T2/T3 minutes, conflict rule) — every edit so far has gone through a
+direct service-role script run by Claude. The spec's phase table puts
+"Region settings... CRUD" under Phase 11, so this isn't a surprise, but
+two things beyond a plain CRUD form are worth building at the same time:
+(1) `regions.dispatch_email` is currently a single `text` column pointed
+at the founder's own inbox — it needs to become a list (e.g. `text[]`,
+mirroring `regions.zip_codes`'s existing array-column pattern) so a real
+ops team's dispatch alerts aren't capped at one recipient; (2) whatever
+UI validates region settings should account for the T1 < T2 < T3 ordering
+`cron-unclaimed-delivery-check` assumes but never itself validates.
