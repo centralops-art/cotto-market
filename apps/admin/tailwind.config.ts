@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import defaultTheme from "tailwindcss/defaultTheme";
 
 const config: Config = {
   darkMode: ["class"],
@@ -9,6 +10,16 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // Previously missing entirely -- next/font loaded Inter onto
+      // --font-sans but nothing in the Tailwind config pointed font-sans at
+      // it, so `html { @apply font-sans }` in globals.css was silently
+      // falling back to Tailwind's default system-font stack. Fixed here
+      // while also adding the marketing site's heading typeface.
+      fontFamily: {
+        sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans],
+        heading: ["var(--font-heading)", ...defaultTheme.fontFamily.serif],
+        mono: ["var(--font-mono)", ...defaultTheme.fontFamily.mono],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
