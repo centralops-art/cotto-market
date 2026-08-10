@@ -19,6 +19,9 @@ export default async function DashboardPage() {
       <Link href="/dashboard/orders" className={cn(buttonVariants())}>
         Orders
       </Link>
+      <Link href="/dashboard/reviews" className={cn(buttonVariants())}>
+        Flagged reviews
+      </Link>
       <SignOutButton />
     </main>
   );

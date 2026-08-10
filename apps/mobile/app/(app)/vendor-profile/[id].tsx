@@ -14,6 +14,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, Share, Text, View } fr
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { CartButton } from "../../../src/components/cart-button";
+import { ReviewList } from "../../../src/components/review-list";
 
 const DAY_LABELS: Record<string, string> = {
   monday: "Mon",
@@ -258,6 +259,10 @@ export default function VendorProfile() {
             </View>
           );
         })}
+      </View>
+
+      <View className="mt-6 px-6">
+        <ReviewList vendorId={vendor.id} />
       </View>
     </ScrollView>
   );

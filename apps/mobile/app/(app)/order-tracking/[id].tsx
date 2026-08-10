@@ -61,6 +61,16 @@ export default function OrderTracking() {
     },
   });
 
+  const existingReviewQuery = useQuery({
+    queryKey: ["existing_review", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("reviews").select("id").eq("vendor_suborder_id", id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   // Phase 9: non-null once cron-unclaimed-delivery-check has sent the T2
   // pickup-or-refund offer for this suborder's current delivery_cycle and
   // nothing has resolved it yet (a claim, or an earlier choice) -- see
@@ -191,6 +201,18 @@ export default function OrderTracking() {
           })}
         </View>
       )}
+
+      {suborder.status === "completed" &&
+        (existingReviewQuery.data ? (
+          <Text className="text-center text-white/50">You've already reviewed this order. Thanks!</Text>
+        ) : (
+          <Pressable
+            className="items-center rounded-lg bg-cotto-accent py-3"
+            onPress={() => router.push({ pathname: "/(app)/review/[id]", params: { id: id! } })}
+          >
+            <Text className="font-semibold text-white">Leave a review</Text>
+          </Pressable>
+        ))}
 
       <View className="gap-2 rounded-lg bg-white/5 p-4">
         <Text className="font-semibold text-white">Items</Text>

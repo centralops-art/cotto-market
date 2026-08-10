@@ -1,4 +1,4 @@
-# Cotto Marketplace — Handoff (Phase 9 merged, Phase 10 next)
+# Cotto Marketplace — Handoff (Phase 10 built, awaiting founder gate test)
 
 Last updated: 2026-08-09. Phases 6, 7, 8, and 9 are all merged to `main`
 and fully gate-tested (§15, §16, §18, §19). Phase 9 (unclaimed delivery
@@ -10,12 +10,13 @@ UUIDs in four separate emails, a swallowed error message, and a missing
 delivery-address display — see §19's gate test results).
 
 **Phase 10 (reviews, favorites polish, waitlist notifications, including
-driver rating) is next and has not been started.**
+driver rating) is built and server-side verified — see §20. Not yet
+merged, awaiting the founder's gate test.**
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
 as-is for historical record of how Phase 6 was built and verified; §15 has
-its final close-out; §16 has Phase 7; §19 has Phase 9.)
+its final close-out; §16 has Phase 7; §19 has Phase 9; §20 has Phase 10.)
 
 ---
 
@@ -150,6 +151,14 @@ it's tested via Expo dev client + EAS builds.
 | 0039 | Phase 8: full `create or replace` of `is_valid_message_recipient()` (0023), additively extending it to also recognize customer↔(currently active driver) as a valid message pair. **Fixed a real pre-existing gap**: driver↔customer messaging didn't work before this — the function only recognized customer↔cook. |
 | 0040 | Phase 8: every-5-minute `pg_cron` schedule for `cron-stuck-delivery-watchdog`, same `pg_net`/Vault-secret idiom as 0014/0034 but sub-hourly given the 20-minute stuck-claim threshold. |
 | 0041 | Phase 8: `suborder_driver_display_name(so_id)` SECURITY DEFINER function, mirrors `suborder_customer_display_name` (0031) in reverse — lets a customer's order-tracking screen show who's delivering their order. |
+| 0042 | Phase 9: `vendor_suborders.tax_cents` — the per-suborder Stripe Tax figure was computed at checkout but only ever persisted as the order-level sum; needed for suborder-scoped refunds. |
+| 0043 | Phase 9: `claim_delivery()` now logs `claim_cancelled_pending_offer` when a driver's claim wins the race against an active T2 offer (audit trail only, no behavior change). |
+| 0044 | Phase 9: `suborder_pending_customer_offer(so_id)` SECURITY DEFINER function — returns the T3 deadline if an unresolved T2 offer exists for the suborder's current `delivery_cycle`, else null. |
+| 0045 | Phase 9: every-5-minute `pg_cron` schedule for `cron-unclaimed-delivery-check`. |
+| 0046 | Phase 10: public `review-images` storage bucket (10MiB, image/jpeg\|png\|webp), limits folded in at creation (0032's one-step pattern). Path scoped by `{customer_profile_id}/...`; public read, owner write/update/delete. |
+| 0047 | Phase 10: `report_review(review_id, reason)` SECURITY DEFINER RPC — any authenticated profile can flag someone else's review (sets `is_flagged`/`flagged_reason`; a second report just overwrites the reason, no separate reports table). `rate_delivery_claim(so_id, rating, comment)` SECURITY DEFINER RPC — the real customer's one-time driver rating on the completed suborder's most recent `delivery_claims` row (`delivery_claims` had zero client-facing UPDATE grant since migration 0010, which explicitly reserved this for Phase 10). |
+| 0048 | Phase 10: every-5-minute `pg_cron` schedule for `cron-waitlist-restock-check`. |
+| 0049 | Phase 10: `review_customer_first_name(review_id)` SECURITY DEFINER function, same pattern as 0031/0035/0041 — `reviews_select` is public but `profiles` RLS only lets a profile read its own row, so without this a review's byline would always render blank to anyone but the reviewer. Granted to `anon` too since reviews are publicly viewable. |
 
 **RLS pattern for orders/suborders/order_items**: written *only* by service-role
 edge functions (checkout function creates them as `pending_payment`; webhook
@@ -188,6 +197,9 @@ changes hosted schema, or `apps/mobile`/`apps/admin` typecheck will drift.
 | `update-delivery-status` (Phase 8) | Driver-driven delivery status transitions (`en_route_to_pickup`/`picked_up`/`en_route_to_customer`/`delivered`). Verifies claim ownership under the caller's own JWT, then switches to the service-role client for the actual writes (drivers have no RLS UPDATE grant on `vendor_suborders`). On `delivered`: fires the driver's Stripe Transfer (mirrors the cook-side Transfer in `stripe-webhook`), then a *separate* update to `completed` (the guard trigger only allows one status-step per statement). | anon+JWT (caller's own active claim) |
 | `compute-delivery-eta` (Phase 8) | Best-effort Mapbox ETA, called by the mobile client right after a successful claim (fire-and-forget). Mirrors `checkout-create-payment-intent`'s Directions call shape, reads `duration` instead of `distance`. | anon+JWT (caller's own active claim) |
 | `cron-stuck-delivery-watchdog` (Phase 8) | pg_cron-triggered every 5 min (0040); auto-releases claims stuck in `claimed`/`en_route_to_pickup` 20+ minutes (food hasn't left the kitchen yet — safe to re-offer), notifies `regions.dispatch_email` once (not auto-recoverable) for claims stuck in `picked_up`/`en_route_to_customer` 20+ minutes. | service-role (cron) |
+| `cron-unclaimed-delivery-check` (Phase 9) | pg_cron-triggered every 5 min (0045); T1/T2/T3 fallback for unclaimed `ready` delivery suborders — dispatch email, customer pickup-or-refund offer, auto-refund. | service-role (cron) |
+| `resolve-delivery-offer` (Phase 9) | Customer's in-app response to the T2 offer (`{suborderId, choice: "pickup" \| "refund"}`). | anon+JWT (caller's own order) |
+| `cron-waitlist-restock-check` (Phase 10) | pg_cron-triggered every 5 min (0048); emails each unnotified `waitlist_entries` row once its `menu_items.is_sold_out` flips false, then sets `notified_at` (consumed on first notification, no repeat emails on a later restock). Email-only — see §20. | service-role (cron) |
 
 **Important Deno quirk**: edge functions do **not** import from
 `packages/shared` — that package's TypeScript uses extensionless relative
@@ -1942,3 +1954,191 @@ discipline.
 merge — ask the founder before merging, per this project's standing
 rule.** Once merged, Phase 10 (reviews, favorites polish, waitlist
 notifications, including driver rating) is next.
+
+---
+
+## 20. Phase 10 — Reviews, favorites polish, waitlist notifications, driver rating (2026-08-09, built, awaiting founder gate test)
+
+Scope per `Cotto_MVP_Spec.md` §3.4 item 9 / §3.7-adjacent table row 10: after
+a completed order, prompt the customer to review each item (1–5 stars +
+optional text + one photo) and, for delivery suborders, rate the driver;
+lightweight flag-for-review moderation; waitlist restock emails; and a
+favorites polish pass.
+
+Four decisions confirmed with the founder before building (see the
+conversation that opened this phase):
+1. **Review moderation: customer report + auto-hide, not admin-only.** Any
+   signed-in customer can report a review; reporting immediately sets
+   `is_flagged = true` (hidden from public view right away via the existing
+   partial index from migration 0008), pending an admin decide-to-restore/
+   delete queue in the admin app.
+2. **Driver rating write path: a one-time SECURITY DEFINER RPC**, matching
+   this project's established pattern of zero raw client RLS grants on
+   sensitive tables (drivers/customers never get a raw `UPDATE` — see
+   `claim_delivery`/`release_delivery_claim` from Phase 8). A second rating
+   attempt is rejected rather than silently overwriting the first.
+3. **Waitlist restock notifications: email-only**, not email+SMS. Matches
+   this project's established precedent (T1 dispatch alerts in
+   `cron-unclaimed-delivery-check`, the stuck-claim watchdog) of not
+   expanding SMS message types beyond what's already disclosed in the
+   approved Twilio A2P 10DLC campaign, to avoid reopening that review
+   cycle for a notification type the campaign doesn't cover.
+4. **Favorites polish scope: item-vs-vendor distinction specifically** — no
+   other open bugs/TODOs existed in `favorites.tsx` at the start of this
+   phase, so scope was narrowed to what the founder actually wanted:
+   showing which vendor sells a favorited dish, and quick-unfavorite
+   directly from the list.
+
+**A design finding worth recording**: HANDOFF.md §3 previously flagged
+"self-reviews will need blocking in Phase 10" as an open item. Reading
+`guard_review_not_self()` (migration 0010, extended by 0023) before writing
+any code showed this was **already fully built** — the trigger has blocked
+a vendor owner from reviewing their own storefront since Phase 6's security
+pass, and 0023 additionally already requires the review's suborder be a
+real, completed order the reviewing customer placed with that vendor.
+Nothing needed building here; the §3 note was simply stale. No code changes
+were made for this — verified via the server-side test suite below instead
+(a fresh assertion that this unrelated-to-Phase-10 trigger still holds after
+the rest of this phase's changes).
+
+**What shipped:**
+1. Migrations 0046–0049 (see §4): the public `review-images` storage bucket,
+   the `report_review`/`rate_delivery_claim` RPCs, the
+   `cron-waitlist-restock-check` schedule, and `review_customer_first_name`
+   (a narrow SECURITY DEFINER lookup added once it became clear a review's
+   byline would otherwise always render blank to anyone but the reviewer —
+   `reviews_select` is public, but `profiles` RLS only lets a profile read
+   its own row; same pattern as 0031/0035/0041).
+2. Edge function `cron-waitlist-restock-check` (see §5).
+3. Mobile:
+   - `uploadReviewImage` (`src/lib/upload-image.ts`), mirroring
+     `uploadVendorImage` but scoped to the reviewing customer's profile id.
+   - New `src/components/star-rating.tsx` — tappable or read-only 5-star
+     row, reused across the review form, the storefront review list, the
+     item rating summary, and the driver-rating section.
+   - New `app/(app)/review/[id].tsx` — the post-completion review screen:
+     overall rating + optional text + optional one photo, a per-item
+     rating/note row (pre-filled to the overall rating so a customer isn't
+     forced to tap every star individually), and — only for delivery
+     suborders — a driver rating section that calls `rate_delivery_claim`.
+     Reached via a new "Leave a review" card on `order-tracking/[id].tsx`,
+     shown once `status === 'completed'` and no review exists yet for that
+     suborder/customer pair.
+   - New `src/components/review-list.tsx` — the vendor storefront's public
+     review list (average rating, each review's text/photo, a "Report"
+     action wired to `report_review` behind an `Alert.alert` confirm),
+     mounted at the bottom of `vendor-profile/[id].tsx`. `item/[id].tsx`
+     gained a compact average-rating line sourced from `review_items`.
+   - `favorites.tsx`: favorited dishes now show which vendor sells them
+     (`menu_items(*, vendors(storefront_name))`), and both the Vendors and
+     Dishes sections got a quick-unfavorite star directly in the list row
+     (previously required navigating into the detail screen to unfavorite).
+4. Admin: new `dashboard/reviews/page.tsx` — lists every `is_flagged = true`
+   review (vendor, customer name, rating, body, photo, flagged reason) with
+   Restore/Delete actions, via new `api/admin/reviews/[id]/restore` and
+   `.../delete` routes (direct mirrors of the existing vendor approve/reject
+   route pattern, each writing an `audit_log` row). Nav link added to
+   `dashboard/page.tsx`.
+
+**A schema wrinkle handled along the way**: `order_items.menu_item_id` is
+nullable (set null if the referenced menu item is later deleted), which
+`review/[id].tsx` has to account for — an order line for a since-deleted
+menu item is filtered out of the per-item rating list entirely (nothing
+sensible to attach a `review_items` row to). Caught by `pnpm typecheck`,
+not by manual review.
+
+**Verified this session (server-side, throwaway-fixture discipline, same as
+every prior phase — a Node script against the hosted Supabase using real
+per-user sessions via `auth.admin.generateLink` + `verifyOtp`, deleted after
+use, confirmed clean via `git status`): 18/18 checks passed**, including:
+- A customer can review their own completed order; `review_customer_first_name`
+  is callable by a stranger without erroring on a fixture profile with no
+  `full_name` set, and returns the real first name for the one fixture
+  profile that has one ("Three").
+- A stranger can `report_review` another customer's review; the row's
+  `is_flagged`/`flagged_reason` are actually set; the flagged review is
+  correctly hidden from that stranger's own `reviews_select` view but stays
+  visible to its own author; reporting a nonexistent review id fails
+  cleanly.
+- The vendor-owner self-review block (migration 0010/0023, unchanged this
+  phase) still holds after everything above.
+- A customer can rate the driver on their own completed delivery via
+  `rate_delivery_claim`; a second rating attempt is rejected and doesn't
+  overwrite the first; a stranger cannot rate someone else's delivery; an
+  out-of-range rating (7) is rejected.
+- `cron-waitlist-restock-check` runs cleanly, notifies a fixture waitlist
+  entry once its item flips `is_sold_out: false`, sets `notified_at`, and a
+  second cron run doesn't re-notify the same (already-notified) entry.
+
+`pnpm typecheck && pnpm lint && pnpm test` all pass across all three
+workspaces.
+
+**A process note, logged per HANDOFF.md §6's standing instruction to flag
+this if it ever happens**: while fetching the hosted service-role key for
+this session's verification script, the first `supabase projects api-keys`
+call was run directly through Bash without piping straight to a file, so
+the raw key value appeared in that tool call's visible output once. Flagged
+to the founder in-session; every subsequent key fetch in this phase was
+piped straight to a local file with no intermediate echo. Founder's call
+whether this warrants a key rotation (same standing position as the prior
+occurrence noted in §6).
+
+**Not verified this session** (needs a real device, same established
+limitation as every prior phase — §14): the mobile UI itself — the review
+form (star taps, photo picker, per-item rows), the storefront review list
+and Report confirm dialog, the item rating summary, the favorites
+quick-unfavorite star, and the "Leave a review" card's appearance timing.
+No local admin browser-preview either, same Docker-not-running limitation
+noted in every phase since §16 — the new `dashboard/reviews` page was
+read-reviewed against the existing `dashboard/vendors` pattern instead.
+
+### Gate-test walkthrough
+
+Sign in as `CPITTS1183@gmail.com` (owns **Tester Kitchen**). You'll want at
+least one *other* completed order to review normally, plus one completed
+**delivery** suborder (for the driver-rating step) — ask me to seed
+throwaway fixtures via the same service-role script discipline as every
+prior phase's gate test if there's no real completed order handy yet.
+
+1. Open the Orders tab, tap into a **completed** pickup order's tracking
+   screen. Confirm a **"Leave a review"** card appears (it shouldn't appear
+   on any order that isn't `completed` yet, or one you've already reviewed).
+2. Tap in. Set an overall star rating (required — try submitting without
+   one first and confirm it's blocked with a clear message), add optional
+   text, attach a photo from your library, and confirm each per-item row is
+   pre-filled to the overall rating but individually adjustable. Submit.
+3. Confirm you land back on the tracking screen and the "Leave a review"
+   card is now gone. Re-open the same order and confirm you instead see
+   "You've already reviewed this order."
+4. Go to that vendor's storefront (`vendor-profile/[id]`) and scroll to the
+   bottom. Confirm your review appears — rating, text, photo, and your
+   first name as the byline — and the average rating at the top reflects it.
+5. Open the item you reviewed (`item/[id]`) and confirm the average rating
+   line under the price reflects your per-item star.
+6. From a **second** test account (or ask me to simulate one server-side),
+   tap **Report** on your review from that storefront. Confirm it
+   disappears from the public list immediately.
+7. In the admin app, open **Flagged reviews** from the dashboard. Confirm
+   your reported review appears with its rating/text/photo and the reported
+   reason. Tap **Restore** — confirm it reappears on the storefront. Report
+   it again, then tap **Delete** — confirm it's gone from the storefront and
+   from the flagged-reviews queue permanently.
+8. On a **completed delivery** suborder's tracking screen, leave a review
+   and confirm the driver-rating section appears (star + optional comment) —
+   it should **not** appear on a pickup order's review screen. Submit with a
+   driver rating, then ask me to confirm server-side that `delivery_claims.
+   customer_rating` was actually set for that claim.
+9. Favorite a vendor and a dish you haven't favorited yet (from their
+   respective detail screens), then open the **Favorites** tab. Confirm the
+   favorited dish now shows which vendor sells it, and tap the star directly
+   in either list row to unfavorite — confirm it disappears without needing
+   to open the detail screen.
+10. *(Optional, needs a throwaway fixture)* — favorite a sold-out item, ask
+    me to flip it back in stock and manually trigger
+    `cron-waitlist-restock-check`; confirm the "back in stock" email
+    arrives.
+
+**Phase 10 is built and server-side verified. PR #19
+(`phase-10-reviews-favorites-waitlist` → `main`) is open and ready to
+merge — ask the founder before merging, per this project's standing
+rule.**

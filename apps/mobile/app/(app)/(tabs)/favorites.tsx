@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
@@ -30,11 +30,22 @@ export default function Favorites() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("favorites")
-        .select("id, item:menu_items(*)")
+        .select("id, item:menu_items(*, vendors(storefront_name))")
         .eq("profile_id", profile!.id)
         .not("menu_item_id", "is", null);
       if (error) throw error;
       return data;
+    },
+  });
+
+  const unfavorite = useMutation({
+    mutationFn: async (favoriteId: string) => {
+      const { error } = await supabase.from("favorites").delete().eq("id", favoriteId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["favorite_vendors_list", profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ["favorite_items_list", profile?.id] });
     },
   });
 
@@ -49,8 +60,8 @@ export default function Favorites() {
   );
 
   const isLoading = favoriteVendorsQuery.isLoading || favoriteItemsQuery.isLoading;
-  const vendors = favoriteVendorsQuery.data?.map((f) => f.vendor).filter((v) => !!v) ?? [];
-  const items = favoriteItemsQuery.data?.map((f) => f.item).filter((i) => !!i) ?? [];
+  const vendors = favoriteVendorsQuery.data?.filter((f) => !!f.vendor) ?? [];
+  const items = favoriteItemsQuery.data?.filter((f) => !!f.item) ?? [];
 
   return (
     <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 64, gap: 24 }}>
@@ -67,19 +78,22 @@ export default function Favorites() {
           {vendors.length > 0 && (
             <View className="gap-3">
               <Text className="text-lg font-semibold text-white">Vendors</Text>
-              {vendors.map((vendor) => (
+              {vendors.map((fav) => (
                 <Pressable
-                  key={vendor!.id}
+                  key={fav.id}
                   className="flex-row items-center gap-3 rounded-lg bg-white/5 p-3"
-                  onPress={() => router.push(`/(app)/vendor-profile/${vendor!.id}`)}
+                  onPress={() => router.push(`/(app)/vendor-profile/${fav.vendor!.id}`)}
                 >
-                  {vendor!.header_image_url && (
-                    <Image source={{ uri: vendor!.header_image_url }} className="h-12 w-12 rounded-md" resizeMode="cover" />
+                  {fav.vendor!.header_image_url && (
+                    <Image source={{ uri: fav.vendor!.header_image_url }} className="h-12 w-12 rounded-md" resizeMode="cover" />
                   )}
                   <View className="flex-1">
-                    <Text className="font-semibold text-white">{vendor!.storefront_name}</Text>
-                    {vendor!.tagline && <Text className="text-sm text-white/60">{vendor!.tagline}</Text>}
+                    <Text className="font-semibold text-white">{fav.vendor!.storefront_name}</Text>
+                    {fav.vendor!.tagline && <Text className="text-sm text-white/60">{fav.vendor!.tagline}</Text>}
                   </View>
+                  <Pressable hitSlop={8} disabled={unfavorite.isPending} onPress={() => unfavorite.mutate(fav.id)}>
+                    <Text className="text-lg text-cotto-accent">★</Text>
+                  </Pressable>
                 </Pressable>
               ))}
             </View>
@@ -88,19 +102,27 @@ export default function Favorites() {
           {items.length > 0 && (
             <View className="gap-3">
               <Text className="text-lg font-semibold text-white">Dishes</Text>
-              {items.map((item) => (
+              {items.map((fav) => (
                 <Pressable
-                  key={item!.id}
+                  key={fav.id}
                   className="flex-row items-center gap-3 rounded-lg bg-white/5 p-3"
-                  onPress={() => router.push(`/(app)/item/${item!.id}`)}
+                  onPress={() => router.push(`/(app)/item/${fav.item!.id}`)}
                 >
-                  {item!.image_urls[0] && (
-                    <Image source={{ uri: item!.image_urls[0] }} className="h-12 w-12 rounded-md" resizeMode="cover" />
+                  {fav.item!.image_urls[0] && (
+                    <Image source={{ uri: fav.item!.image_urls[0] }} className="h-12 w-12 rounded-md" resizeMode="cover" />
                   )}
                   <View className="flex-1">
-                    <Text className="font-semibold text-white">{item!.name}</Text>
-                    <Text className="text-sm text-white/60">${(item!.price_cents / 100).toFixed(2)}</Text>
+                    <Text className="font-semibold text-white">{fav.item!.name}</Text>
+                    {(fav.item as unknown as { vendors: { storefront_name: string } | null }).vendors?.storefront_name && (
+                      <Text className="text-xs text-white/40">
+                        {(fav.item as unknown as { vendors: { storefront_name: string } | null }).vendors!.storefront_name}
+                      </Text>
+                    )}
+                    <Text className="text-sm text-white/60">${(fav.item!.price_cents / 100).toFixed(2)}</Text>
                   </View>
+                  <Pressable hitSlop={8} disabled={unfavorite.isPending} onPress={() => unfavorite.mutate(fav.id)}>
+                    <Text className="text-lg text-cotto-accent">★</Text>
+                  </Pressable>
                 </Pressable>
               ))}
             </View>
