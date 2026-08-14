@@ -2519,12 +2519,13 @@ one-way miles - free radius)`, with the free radius (`regions.
 free_delivery_miles`, default 5) newly configurable from the region settings
 page alongside the base fee, per-mile fee, and payout split — see the §3
 update above for the full before/after and rationale.
-[PR #22](https://github.com/centralops-art/cotto-market/pull/22),
-migration 0054, already applied to hosted + `checkout-create-payment-intent`
-already deployed at time of writing. **Flagged to the founder and
-consciously accepted**: this materially cuts driver payouts on
-short/nearby deliveries, since those now often net just a slice of the flat
-base fee with no mileage component at all (previously every delivery,
-however short, was billed round-trip miles from mile zero). Not yet merged
-— awaiting the founder's go-ahead the same as every money-math change in
-this project.
+**[PR #22](https://github.com/centralops-art/cotto-market/pull/22),
+squash-merged to `main` as commit `427c717`.** Migration 0054 applied to
+hosted, `checkout-create-payment-intent` deployed. **Flagged to the founder
+and consciously accepted before merging**: this materially cuts driver
+payouts on short/nearby deliveries, since those now often net just a slice
+of the flat base fee with no mileage component at all (previously every
+delivery, however short, was billed round-trip miles from mile zero). The
+founder's plan is to tune base fee / per-mile fee / free radius / payout
+split against each other from the region settings page to find the right
+balance — nothing further needs to change in code for that.
