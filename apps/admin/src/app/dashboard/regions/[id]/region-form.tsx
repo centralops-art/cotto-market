@@ -11,6 +11,7 @@ type Region = {
   dispatch_phone: string | null;
   base_delivery_fee_cents: number;
   per_mile_fee_cents: number;
+  free_delivery_miles: number;
   delivery_payout_split_pct: number;
   claim_window_t1_minutes: number;
   claim_window_t2_minutes: number;
@@ -26,6 +27,7 @@ export function RegionForm({ region }: { region: Region }) {
   const [newEmail, setNewEmail] = useState("");
   const [baseFee, setBaseFee] = useState(String(region.base_delivery_fee_cents / 100));
   const [perMileFee, setPerMileFee] = useState(String(region.per_mile_fee_cents / 100));
+  const [freeMiles, setFreeMiles] = useState(String(region.free_delivery_miles));
   const [payoutSplit, setPayoutSplit] = useState(String(region.delivery_payout_split_pct));
   const [t1, setT1] = useState(String(region.claim_window_t1_minutes));
   const [t2, setT2] = useState(String(region.claim_window_t2_minutes));
@@ -68,6 +70,10 @@ export function RegionForm({ region }: { region: Region }) {
     if (Number.isNaN(baseFeeCents) || baseFeeCents < 0 || Number.isNaN(perMileFeeCents) || perMileFeeCents < 0) {
       return setError("Delivery fees must be non-negative dollar amounts");
     }
+    const freeMilesN = Number(freeMiles);
+    if (Number.isNaN(freeMilesN) || freeMilesN < 0) {
+      return setError("Free delivery miles must be a non-negative number");
+    }
 
     setLoading(true);
     const res = await fetch(`/api/admin/regions/${region.id}`, {
@@ -79,6 +85,7 @@ export function RegionForm({ region }: { region: Region }) {
         dispatch_emails: emails,
         base_delivery_fee_cents: baseFeeCents,
         per_mile_fee_cents: perMileFeeCents,
+        free_delivery_miles: freeMilesN,
         delivery_payout_split_pct: payoutSplitN,
         claim_window_t1_minutes: t1n,
         claim_window_t2_minutes: t2n,
@@ -154,6 +161,10 @@ export function RegionForm({ region }: { region: Region }) {
 
       <section>
         <h2 className="mb-2 text-lg font-semibold">Delivery fees & split</h2>
+        <p className="mb-2 text-sm text-muted-foreground">
+          Delivery fee = base fee + (per-mile fee × one-way miles beyond the free radius). A delivery entirely within the
+          free radius costs just the base fee.
+        </p>
         <div className="flex flex-wrap gap-4">
           <label className="flex flex-col gap-1 text-sm">
             Base delivery fee ($)
@@ -175,6 +186,17 @@ export function RegionForm({ region }: { region: Region }) {
               className="w-32 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
               value={perMileFee}
               onChange={(e) => setPerMileFee(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Free delivery miles
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              className="w-32 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+              value={freeMiles}
+              onChange={(e) => setFreeMiles(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">

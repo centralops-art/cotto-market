@@ -681,6 +681,7 @@ export type Database = {
           dispatch_contact_name: string | null
           dispatch_emails: string[]
           dispatch_phone: string | null
+          free_delivery_miles: number
           health_regs_url: string | null
           id: string
           is_active: boolean
@@ -701,6 +702,7 @@ export type Database = {
           dispatch_contact_name?: string | null
           dispatch_emails?: string[]
           dispatch_phone?: string | null
+          free_delivery_miles?: number
           health_regs_url?: string | null
           id?: string
           is_active?: boolean
@@ -721,6 +723,7 @@ export type Database = {
           dispatch_contact_name?: string | null
           dispatch_emails?: string[]
           dispatch_phone?: string | null
+          free_delivery_miles?: number
           health_regs_url?: string | null
           id?: string
           is_active?: boolean

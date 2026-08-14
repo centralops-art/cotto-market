@@ -4,26 +4,37 @@ import {
   calculateDeliverySplit,
   calculatePlatformFeeCents,
   calculateSubtotalCents,
-  metersToRoundTripMiles,
+  metersToMiles,
 } from "./fees";
 
-const region = { baseDeliveryFeeCents: 499, perMileFeeCents: 150 };
+const region = { baseDeliveryFeeCents: 499, perMileFeeCents: 150, freeDeliveryMiles: 5 };
 
 describe("calculateDeliveryFeeCents", () => {
   it("returns just the base fee at zero miles", () => {
     expect(calculateDeliveryFeeCents(region, 0)).toBe(499);
   });
 
-  it("adds per-mile fee for round-trip miles", () => {
-    expect(calculateDeliveryFeeCents(region, 4)).toBe(499 + 4 * 150);
+  it("returns just the base fee for any distance within the free radius", () => {
+    expect(calculateDeliveryFeeCents(region, 3)).toBe(499);
+    expect(calculateDeliveryFeeCents(region, 5)).toBe(499);
+  });
+
+  it("charges per-mile only for the portion beyond the free radius", () => {
+    // 8 one-way miles, 5 free -> 3 billable miles
+    expect(calculateDeliveryFeeCents(region, 8)).toBe(499 + 3 * 150);
   });
 
   it("handles a very long distance", () => {
-    expect(calculateDeliveryFeeCents(region, 50)).toBe(499 + 50 * 150);
+    expect(calculateDeliveryFeeCents(region, 55)).toBe(499 + 50 * 150);
   });
 
   it("rejects negative distance", () => {
     expect(() => calculateDeliveryFeeCents(region, -1)).toThrow();
+  });
+
+  it("a zero free-mile radius behaves like the old from-mile-zero pricing", () => {
+    const noFreeRadius = { ...region, freeDeliveryMiles: 0 };
+    expect(calculateDeliveryFeeCents(noFreeRadius, 4)).toBe(499 + 4 * 150);
   });
 });
 
@@ -54,23 +65,21 @@ describe("calculateDeliverySplit", () => {
   });
 });
 
-describe("metersToRoundTripMiles", () => {
+describe("metersToMiles", () => {
   it("returns 0 for a zero-distance Mapbox result", () => {
-    expect(metersToRoundTripMiles(0)).toBe(0);
+    expect(metersToMiles(0)).toBe(0);
   });
 
-  it("doubles the one-way distance for the round trip", () => {
-    // 1609.344 m = 1 mile one-way -> 2 miles round trip
-    expect(metersToRoundTripMiles(1609.344)).toBeCloseTo(2, 5);
+  it("converts one-way meters to one-way miles", () => {
+    expect(metersToMiles(1609.344)).toBeCloseTo(1, 5);
   });
 
   it("handles a very long distance", () => {
-    // ~50 miles one-way
-    expect(metersToRoundTripMiles(80467.2)).toBeCloseTo(100, 3);
+    expect(metersToMiles(80467.2)).toBeCloseTo(50, 3);
   });
 
   it("rejects negative distance", () => {
-    expect(() => metersToRoundTripMiles(-1)).toThrow();
+    expect(() => metersToMiles(-1)).toThrow();
   });
 });
 

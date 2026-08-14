@@ -9,6 +9,7 @@ const bodySchema = z
     dispatch_emails: z.array(z.string().email()),
     base_delivery_fee_cents: z.number().int().min(0),
     per_mile_fee_cents: z.number().int().min(0),
+    free_delivery_miles: z.number().min(0),
     delivery_payout_split_pct: z.number().min(0).max(100),
     claim_window_t1_minutes: z.number().int().min(1),
     claim_window_t2_minutes: z.number().int().min(1),
