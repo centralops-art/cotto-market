@@ -8,7 +8,7 @@
 // Requires STRIPE_SECRET_KEY and MAPBOX_TOKEN secrets.
 //
 // NOTE: calculateSubtotalCents/calculatePlatformFeeCents/calculateDeliveryFeeCents/
-// metersToRoundTripMiles below are mirrored from packages/shared/src/fees.ts.
+// metersToMiles below are mirrored from packages/shared/src/fees.ts.
 // Deno's strict module resolution (no extensionless relative imports) makes a
 // direct cross-package import from that Node-oriented file brittle, so the
 // handful of pure functions are duplicated here -- keep them in sync if the
@@ -44,17 +44,19 @@ function calculatePlatformFeeCents(subtotalCents: Cents, platformFeePct: number)
 }
 
 function calculateDeliveryFeeCents(
-  region: { baseDeliveryFeeCents: Cents; perMileFeeCents: Cents },
-  roundTripMiles: number
+  region: { baseDeliveryFeeCents: Cents; perMileFeeCents: Cents; freeDeliveryMiles: number },
+  oneWayMiles: number
 ): Cents {
-  if (roundTripMiles < 0) throw new Error(`roundTripMiles must be >= 0, got ${roundTripMiles}`);
-  return region.baseDeliveryFeeCents + Math.round(roundTripMiles * region.perMileFeeCents);
+  if (oneWayMiles < 0) throw new Error(`oneWayMiles must be >= 0, got ${oneWayMiles}`);
+  if (region.freeDeliveryMiles < 0) throw new Error(`region.freeDeliveryMiles must be >= 0, got ${region.freeDeliveryMiles}`);
+  const billableMiles = Math.max(0, oneWayMiles - region.freeDeliveryMiles);
+  return region.baseDeliveryFeeCents + Math.round(billableMiles * region.perMileFeeCents);
 }
 
 const METERS_PER_MILE = 1609.344;
-function metersToRoundTripMiles(oneWayDistanceMeters: number): number {
+function metersToMiles(oneWayDistanceMeters: number): number {
   if (oneWayDistanceMeters < 0) throw new Error(`oneWayDistanceMeters must be >= 0, got ${oneWayDistanceMeters}`);
-  return (2 * oneWayDistanceMeters) / METERS_PER_MILE;
+  return oneWayDistanceMeters / METERS_PER_MILE;
 }
 
 const WEEKDAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
@@ -288,10 +290,14 @@ Deno.serve(async (req) => {
         const directions = await directionsRes.json();
         const distanceMeters = directions.routes?.[0]?.distance;
         if (typeof distanceMeters !== "number") throw new Error("Mapbox Directions returned no route");
-        const roundTripMiles = metersToRoundTripMiles(distanceMeters);
+        const oneWayMiles = metersToMiles(distanceMeters);
         deliveryFeeCents = calculateDeliveryFeeCents(
-          { baseDeliveryFeeCents: region.base_delivery_fee_cents, perMileFeeCents: region.per_mile_fee_cents },
-          roundTripMiles
+          {
+            baseDeliveryFeeCents: region.base_delivery_fee_cents,
+            perMileFeeCents: region.per_mile_fee_cents,
+            freeDeliveryMiles: region.free_delivery_miles,
+          },
+          oneWayMiles
         );
       }
 
