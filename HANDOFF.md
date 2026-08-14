@@ -90,8 +90,15 @@ it's tested via Expo dev client + EAS builds.
   this function exists and is tested but has no caller yet (Phase 8's job).
 - **Region**: single seeded region "North Shore Chicago", 11 ZIPs (60201, 60202,
   60203, 60076, 60077, 60091, 60093, 60022, 60035, 60040, 60062). `$4.99` base +
-  `$1.50/mile` delivery fee, 80/20 driver/Cotto split, T1=10/T2=30/T3=60 min claim
-  windows (Phase 8/9 territory), `soft_warning` conflict rule.
+  `$1.50/mile` **beyond a 5-mile free radius, billed on one-way pickup→dropoff
+  distance** (changed 2026-08-13, PR #22 -- originally shipped as round-trip
+  billing from mile zero with no free radius; see `calculateDeliveryFeeCents`
+  in `packages/shared/src/fees.ts` and `regions.free_delivery_miles`), 80/20
+  driver/Cotto split, T1=10/T2=30/T3=60 min claim windows (Phase 8/9
+  territory), `soft_warning` conflict rule. Base fee, per-mile fee, free
+  radius, and payout split are all editable together from the admin app's
+  region settings page (Phase 11) — founder's intent is to balance driver
+  economics by hand rather than have Claude pick numbers.
 - **Dual-mode accounts**: `profiles.role` is set once at signup and **never**
   mutated by "Become a Vendor" — vendor-ness is derived purely from
   `vendors.owner_profile_id` ownership. A customer can own a vendor row and keep
@@ -2504,3 +2511,20 @@ stack the entire time despite Inter being loaded via `next/font` — if a
 future session touches typography again, the fix (mapping `fontFamily.sans`/
 `.heading`/`.mono` to the `--font-*` CSS variables) is the pattern to keep
 following, not the old un-wired setup.
+
+**2026-08-13, out-of-phase delivery-fee formula change**: founder-initiated
+correction, not something the original spec called for. Delivery fee changed
+from round-trip billing starting at mile zero to `base + per-mile x max(0,
+one-way miles - free radius)`, with the free radius (`regions.
+free_delivery_miles`, default 5) newly configurable from the region settings
+page alongside the base fee, per-mile fee, and payout split — see the §3
+update above for the full before/after and rationale.
+[PR #22](https://github.com/centralops-art/cotto-market/pull/22),
+migration 0054, already applied to hosted + `checkout-create-payment-intent`
+already deployed at time of writing. **Flagged to the founder and
+consciously accepted**: this materially cuts driver payouts on
+short/nearby deliveries, since those now often net just a slice of the flat
+base fee with no mileage component at all (previously every delivery,
+however short, was billed round-trip miles from mile zero). Not yet merged
+— awaiting the founder's go-ahead the same as every money-math change in
+this project.
