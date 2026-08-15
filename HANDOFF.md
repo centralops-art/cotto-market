@@ -2554,19 +2554,57 @@ same **Claim** button. Migration 0055 pushed to hosted at the founder's
 explicit request, ahead of the pending legal review, since this is IL law
 compliance rather than a discretionary product change.
 
-**Not yet done / worth a real gate test once convenient**: a live
-end-to-end check that a vendor's own `active` + `delivery_active` +
-on-duty account can see and successfully claim one of its own `ready`
-delivery suborders (walk: place a delivery order from your own vendor →
-Kitchen it to `ready` → Deliveries tab → confirm your own order now
-appears in Available → Claim → confirm it moves into My Queue and the
-Stripe driver payout Transfer still fires correctly on `delivered`, same
-as claiming someone else's order). Not independently re-verified
-server-side this session — `supabase projects api-keys` (needed to fetch
-the hosted service-role key for a throwaway-fixture check, same discipline
-as every prior phase) was blocked by this environment's action classifier
-this session; the SQL change itself is narrow enough (two `create or
-replace` statements, each deleting one condition/one exception, no new
-logic) to ship on code-review confidence, but the live claim→deliver→payout
-path for a self-delivered order specifically has not been empirically
-exercised yet.
+**Gate-tested live by the founder same day**: claiming your own ready
+delivery order now works on-device, confirming migration 0055 end-to-end
+for the claim step itself. **[PR #23](https://github.com/centralops-art/cotto-market/pull/23),
+squash-merged to `main` as commit `e2fc036`.** Still not independently
+re-verified: the full claim→deliver→payout path (does the Stripe driver
+Transfer still fire correctly on `delivered` for a self-delivered order) —
+worth a spot-check next time a self-delivery order is walked all the way
+through.
+
+**Also same session, 2026-08-15: vendors can now edit their address after
+onboarding.** Founder flagged that address was previously set-once during
+onboarding with no edit path — a real gap for food trucks, which relocate.
+Added an **Address** section to the storefront editor
+(`apps/mobile/app/(app)/vendor/storefront.tsx`, new
+`apps/mobile/src/features/storefront-editor/address-section.tsx`),
+adapted from the onboarding wizard's `service-address-step.tsx` (same
+Mapbox geocoding + pin-preview UX, same `serviceAddressSchema` from
+`packages/shared`) but as a standalone save-in-place section rather than a
+wizard step. Editing any address field invalidates the last-confirmed pin,
+same as onboarding — forces a fresh "Locate on map" tap before Save is
+enabled, since a bad pin would silently skew delivery-fee distance and
+driver navigation, not just look wrong cosmetically.
+
+**No backend changes needed** — confirmed by direct read of the RLS/
+trigger chain before building: `vendors_update_own_or_admin` (0010) has no
+column restriction, and `guard_vendor_owner_update`'s live version (0012)
+only blocks a non-admin from touching `platform_fee_pct`,
+`free_trial_ends_at`, `owner_profile_id`, `region_id`, and restricted
+`status` transitions — `address_line1`/`city`/`state`/`zip`/`lat`/`lng`
+were never guarded, so `useVendor()`'s existing generic `patchVendor()`
+already worked for this with zero migration/RLS changes.
+
+**Also confirmed, not built (already correct)**: the founder's stated
+requirement was that delivery pricing must key off the vendor's address
+*at the time each order is placed*, staying fixed after that even if the
+vendor relocates later. This was already true before this change and
+needed no code: `checkout-create-payment-intent` queries `vendors.lat/lng`
+fresh from the table at order-creation time (no caching/snapshotting) for
+the Mapbox Directions delivery-fee calc, and the resulting
+`delivery_fee_cents` is written once onto the `vendor_suborders` row and
+never recomputed afterward — so an already-placed order's price is
+unaffected by a later address change. Separately, the driver's delivery
+pool (`deliveries.tsx`) polls the pickup vendor's `lat`/`lng` fresh every
+10s (not the order-time snapshot) — correct on purpose, since a driver
+needs the truck's *current* location to navigate to, not where it was
+when the order was accepted.
+
+**Not verified this session**: no on-device test yet (this environment
+can't run Expo) — `pnpm typecheck`/`lint`/`test` all pass across the
+mobile workspace, but the address-edit screen itself hasn't been exercised
+live. Worth a quick gate test: open Manage Storefront → edit address →
+confirm "Locate on map" is required again after any text edit → Save →
+confirm a subsequent delivery order from that vendor prices against the
+new address.

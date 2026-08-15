@@ -1,7 +1,8 @@
-import type { StorefrontBasicsInput, ThemePalette, LayoutStyle } from "@cotto/shared";
+import type { ServiceAddressInput, StorefrontBasicsInput, ThemePalette, LayoutStyle } from "@cotto/shared";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useVendor } from "../../../src/lib/use-vendor";
+import { AddressSection } from "../../../src/features/storefront-editor/address-section";
 import { HeaderBasicsSection } from "../../../src/features/storefront-editor/header-basics-section";
 import { HoursSection } from "../../../src/features/storefront-editor/hours-section";
 import { TeamMembersSection } from "../../../src/features/storefront-editor/team-members-section";
@@ -42,6 +43,26 @@ export default function StorefrontEditor() {
           title="Preorder hours"
           value={vendor.preorder_hours}
           onSave={async (hours) => patchVendor({ preorder_hours: hours })}
+        />
+
+        <AddressSection
+          defaultValues={{
+            addressLine1: vendor.address_line1 ?? "",
+            city: vendor.city ?? "",
+            state: vendor.state ?? "",
+            zip: vendor.zip ?? "",
+          }}
+          defaultCoords={vendor.lat != null && vendor.lng != null ? { lat: vendor.lat, lng: vendor.lng } : null}
+          onSaveAddress={async (values: ServiceAddressInput & { lat: number; lng: number }) =>
+            patchVendor({
+              address_line1: values.addressLine1,
+              city: values.city,
+              state: values.state,
+              zip: values.zip,
+              lat: values.lat,
+              lng: values.lng,
+            })
+          }
         />
 
         <TeamMembersSection vendorId={vendor.id} />
