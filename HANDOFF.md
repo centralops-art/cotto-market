@@ -2529,3 +2529,44 @@ delivery, however short, was billed round-trip miles from mile zero). The
 founder's plan is to tune base fee / per-mile fee / free radius / payout
 split against each other from the region settings page to find the right
 balance — nothing further needs to change in code for that.
+
+**2026-08-15, out-of-phase legal-compliance fix: self-delivery now
+allowed.** Founder flagged that Illinois cottage food law requires vendors
+to be able to deliver their own products themselves — a requirement Phase
+7/8 never anticipated. At the time, `can_view_pool_suborder()` (0010) and
+`claim_delivery()` (0036, superseded by 0043) both deliberately implemented
+a **self-claim block** (`driver_vendor.id <> cooking_vendor.id` in the RLS
+function; an explicit `raise exception 'You cannot claim your own order'`
+in the RPC) — confirmed with the founder before Phase 8 was built, on the
+now-incorrect assumption that vendors would only ever deliver for each
+other, never themselves. See §16/§17 for that original decision.
+
+Fixed by **migration 0055** (`create or replace` on both functions,
+removing only the self-claim exclusion — payout split math, the race-safe
+atomic claim UPDATE, region/conflict-rule checks, and audit logging are
+byte-for-byte unchanged). No mobile app changes needed:
+`apps/mobile/app/(app)/(tabs)/deliveries.tsx`'s pool query has no
+client-side self-filtering of its own — it relies entirely on
+`can_view_pool_suborder` as the security boundary (per its own inline
+comment), so a vendor's own ready delivery orders now simply appear in
+their own "Available" pool like anyone else's and are claimed with the
+same **Claim** button. Migration 0055 pushed to hosted at the founder's
+explicit request, ahead of the pending legal review, since this is IL law
+compliance rather than a discretionary product change.
+
+**Not yet done / worth a real gate test once convenient**: a live
+end-to-end check that a vendor's own `active` + `delivery_active` +
+on-duty account can see and successfully claim one of its own `ready`
+delivery suborders (walk: place a delivery order from your own vendor →
+Kitchen it to `ready` → Deliveries tab → confirm your own order now
+appears in Available → Claim → confirm it moves into My Queue and the
+Stripe driver payout Transfer still fires correctly on `delivered`, same
+as claiming someone else's order). Not independently re-verified
+server-side this session — `supabase projects api-keys` (needed to fetch
+the hosted service-role key for a throwaway-fixture check, same discipline
+as every prior phase) was blocked by this environment's action classifier
+this session; the SQL change itself is narrow enough (two `create or
+replace` statements, each deleting one condition/one exception, no new
+logic) to ship on code-review confidence, but the live claim→deliver→payout
+path for a self-delivered order specifically has not been empirically
+exercised yet.
