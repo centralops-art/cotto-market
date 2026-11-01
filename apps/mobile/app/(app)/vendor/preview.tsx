@@ -112,6 +112,13 @@ export default function StorefrontPreview() {
             </View>
           );
         })}
+
+        {(itemsQuery.data ?? []).length === 0 && (
+          <Text className="text-white/60">
+            No published dishes yet. This is what customers would see right now — add items and mark them available
+            from the Menu editor.
+          </Text>
+        )}
       </View>
     </ScrollView>
   );
