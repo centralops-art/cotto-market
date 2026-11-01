@@ -2709,3 +2709,71 @@ menu builder and storefront preview).
 **Next**: store submission (TestFlight + Play internal track) — the
 founder confirmed both Apple Developer and Google Play Developer accounts
 are already set up, so this is unblocked whenever ready to scope it.
+
+---
+
+## 23. Launch checklist: Stripe test → live mode cutover (not started)
+
+Captured 2026-11-01 in response to the founder's question about switching
+Stripe from test to live mode after the app is published, while still
+assembling the beta test group. **Deliberately not done yet** — the
+founder's beta should stay on test mode; this is a public-launch-time
+checklist, not a Phase 12 task. Test cards (`4242 4242 4242 4242`, see
+§11) keep working for beta testers in the meantime.
+
+**Why this isn't a single toggle**: test and live mode are two entirely
+separate Stripe environments (separate API keys, separate Connect
+accounts, separate Tax registrations). Flipping the platform's own keys
+is cheap; the real work is everything downstream of that.
+
+- [ ] **Platform Stripe account**: complete live-mode business
+      verification/activation in the Stripe Dashboard (business details,
+      bank account for payouts) — this is a Stripe-side process that can
+      take time, start it before the target launch date, not on it.
+- [ ] **Re-register Stripe Tax for live mode.** The current Illinois
+      registration (`taxreg_1TsA78FMh2QSmPls7Ka1f7lo`, see §3/§6) only
+      exists in test mode. Stripe will correctly refuse to collect tax in
+      live mode until a live-mode registration exists — this isn't a bug,
+      see §3's note about checking `stripe.tax.registrations.list()`.
+- [ ] **Generate live-mode API keys** and update everywhere a test key
+      currently lives:
+  - [ ] `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` — Supabase edge
+        function secrets (`supabase secrets set ... --project-ref
+        hlwatggikosoeejskujq`, see §14).
+  - [ ] `STRIPE_SECRET_KEY` — Vercel env var, both Production and
+        Preview (see §6's Vercel env var discipline, and §14's
+        "Sensitive" gotcha).
+  - [ ] `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` — `apps/mobile/.env`.
+        **This one does not take effect for already-published builds**:
+        this project has no `expo-updates`/EAS Update (OTA) configured
+        (confirmed by checking `apps/mobile/app.json` and
+        `package.json` — no `runtimeVersion`, no `updates` config, no
+        `expo-updates` dependency), so a new publishable key requires a
+        **new EAS build submitted to both TestFlight and the Play
+        Store**, not an instant swap. Factor real app-review turnaround
+        time into the launch date. (Setting up EAS Update properly is a
+        separate, one-time piece of work that would make *future*
+        JS-only changes like this instant — worth considering before
+        launch if more such swaps are expected, but out of scope for
+        this checklist.)
+- [ ] **Register a new live-mode Stripe webhook endpoint** (the existing
+      one listening at
+      `https://hlwatggikosoeejskujq.supabase.co/functions/v1/stripe-webhook`
+      is test-mode only, see §6) for `payment_intent.succeeded` +
+      `payment_intent.payment_failed`, and set its live signing secret as
+      `STRIPE_WEBHOOK_SECRET`.
+- [ ] **Every vendor re-does Stripe Connect onboarding in live mode.**
+      The biggest practical item: a vendor's test-mode Connect account
+      (e.g. Tester Kitchen's `acct_1Ts6zAFTs1uyq1Se`, see §10) does not
+      carry over to live mode — bank details and identity verification
+      have to be redone per vendor through the real onboarding flow
+      (`stripe-connect-onboarding`, see §5). Plan for this as part of
+      the transition from beta testers to real vendors, not a backend
+      flag flip.
+- [ ] Confirm with the founder whether beta-tester accounts/orders should
+      be wiped or left as historical test-mode data once live mode goes
+      live (this project's established discipline has been to leave
+      harmless test data in place rather than chase it down, see §10 —
+      but that was for internal fixtures, not a real beta cohort, so
+      worth a deliberate decision here rather than defaulting to the old
+      pattern).
