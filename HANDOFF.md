@@ -1,4 +1,4 @@
-# Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 next)
+# Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
 Last updated: 2026-11-01. Phases 6 through 11 are all merged to `main` and
 fully gate-tested (§15, §16, §18, §19, §20, §21). Phase 11 (admin dashboard:
@@ -11,7 +11,9 @@ was an unrelated local dev-environment issue, not a Phase 11 bug; see §21's
 gate-test-results note).
 
 **Phase 12 (polish, store submission, launch readiness — see the spec's
-phase table) is next and has not been started.**
+phase table) is in progress.** Part 1 (Sentry, error boundaries, empty
+states) is merged — see §22. Store submission (TestFlight + Play internal
+track) has not been started.
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -2607,3 +2609,103 @@ order against that vendor and confirmed the delivery fee changed in
 accordance with the updated address — the order-time Mapbox distance calc
 is correctly reading the new `lat`/`lng`. No bugs found; no code changes
 needed.
+
+---
+
+## 22. Phase 12, part 1 — Sentry, error boundaries, empty states (2026-11-01, built + verified live, merged)
+
+Scope per `Cotto_MVP_Spec.md`'s phase table row 12: "Empty states, error
+boundaries, Sentry, TestFlight + Play internal track." This session covered
+the first three; store submission (TestFlight + Play internal track) is a
+separate follow-up, not started.
+
+**What shipped:**
+1. Two new Sentry projects created under the `cotto-market` org:
+   `cotto-mobile` (React Native platform) and `cotto-admin` (Next.js
+   platform). DSNs added to `apps/mobile/.env`
+   (`EXPO_PUBLIC_SENTRY_DSN`) and `apps/admin/.env.local`
+   (`NEXT_PUBLIC_SENTRY_DSN`), neither committed, same discipline as every
+   other secret in this project. The admin DSN was also added to Vercel's
+   **Production** and **Preview** environments (Config type, not Secret —
+   a DSN is meant to be public-safe, unlike this project's other Vercel env
+   vars which are correctly marked Sensitive).
+2. Mobile: `@sentry/react-native` installed via `expo install` (per §9 bug
+   #3's established lesson). `Sentry.init()` lives in
+   `src/lib/sentry.ts`, called once from `app/_layout.tsx` (`enabled:
+   !__DEV__`, so local Metro dev sessions don't spam the project — any EAS
+   build, preview or production, does report). `metro.config.js` switched
+   from `getDefaultConfig` to `getSentryExpoConfig` for source-map support.
+   `app.json` gained the `@sentry/react-native/expo` config plugin.
+3. Mobile error boundary: `src/components/error-boundary.tsx`, wrapping
+   the whole app in `app/_layout.tsx`. **Deliberately not
+   `Sentry.ErrorBoundary`** — a clean `pnpm typecheck` locally but a real
+   CI failure (two different `@sentry/react` versions resolved in the
+   monorepo's dependency tree, one matched against React 19's types
+   pulled in transitively, the other against React Native's React 18;
+   their `ReactNode` types disagree on whether `bigint` is a valid node)
+   broke `Sentry.ErrorBoundary`'s `fallback` prop typing on a clean
+   install. Rather than fight pnpm's hoisting, it's a plain class
+   component (`getDerivedStateFromError` + `componentDidCatch` calling
+   `Sentry.captureException` directly) — same practical effect, no
+   dependency on Sentry's generic prop types at all. **Lesson: a clean
+   local typecheck isn't proof against a dependency-resolution-order bug
+   — CI's fresh install is what actually caught this one.**
+4. Admin: `@sentry/nextjs` installed. `src/instrumentation-client.ts`
+   (client init) + `src/instrumentation.ts` (server/edge init via
+   `register()`, plus `onRequestError: Sentry.captureRequestError` for
+   React Server Component errors). `next.config.mjs` wrapped with
+   `withSentryConfig` — note the import has to come from the
+   **`@sentry/nextjs/config`** subpath in this SDK version (v11), not the
+   root package; the root import resolves to a CommonJS build under
+   Node's ESM loader and fails outright (`withSentryConfig is not a
+   function`). Two error boundaries: `src/app/dashboard/error.tsx`
+   (segment-level, using the existing `Button` component and Tailwind
+   tokens since the root layout/providers are still mounted above it) and
+   `src/app/global-error.tsx` (root-level, deliberately dependency-light
+   with inline styles and a plain `<button>`, since this is the fallback
+   for when even the root layout itself crashes).
+5. Empty states: a brand-new vendor's menu builder (zero categories) and
+   their own storefront preview (zero published items) both previously
+   rendered a near-blank screen with no explanation; same for a customer
+   landing on a vendor's storefront with zero items, now split into two
+   distinct messages ("hasn't added any dishes yet" vs. "everything got
+   filtered out by your allergen prefs," using whichever is actually
+   true). The admin dashboard's list pages (vendors/customers/orders/
+   regions/reviews) were **audited and already had correct empty states
+   for every list** — no changes needed there.
+6. No `SENTRY_AUTH_TOKEN` configured yet, so EAS/Vercel builds won't
+   upload source maps or debug symbols — error reporting itself works
+   regardless, stack traces just won't be de-minified until one's added.
+   Not blocking; a nice-to-have for later.
+
+**Verified live, not just server-side this time** (admin app only — mobile
+needs a real device, same `§14` limitation as every other phase): pushed a
+throwaway `/sentry-test` page to the PR branch, redeployed the Vercel
+preview (env vars only apply to builds created after they're saved, so the
+first preview build didn't have the DSN — had to trigger a fresh one),
+called `Sentry.captureException` from it, and confirmed the event landed
+in the `cotto-admin` Sentry project's Issues feed within seconds
+(`COTTO-ADMIN-1`). **First attempt used a thrown error inside the test
+button's `onClick` instead of a direct `captureException` call, and
+nothing happened** — a real, reproducible reminder that React error
+boundaries (and Next.js's `error.tsx`/`global-error.tsx`) only catch
+errors during *rendering*, never ones thrown inside event handlers; an
+`onClick` throw is silently swallowed by React with no error boundary
+triggered and nothing sent to Sentry. The throwaway page and its resulting
+test issue were both removed/resolved immediately after confirming.
+
+`pnpm typecheck && pnpm lint && pnpm test` pass across all three
+workspaces; `apps/admin`'s production build (`next build`) succeeds with
+Sentry wired in.
+
+**Phase 12 part 1 is merged** ([PR #25](https://github.com/centralops-art/cotto-market/pull/25),
+squash-merged to `main` as commit `784fc5a`). **Not yet gate-tested by the
+founder**: the mobile error boundary and the new empty-state copy haven't
+been exercised on-device yet; worth a spot-check next session (force a
+render-time crash somewhere trivial, confirm the fallback screen and a
+matching Sentry event in `cotto-mobile`; visit a brand-new/empty vendor's
+menu builder and storefront preview).
+
+**Next**: store submission (TestFlight + Play internal track) — the
+founder confirmed both Apple Developer and Google Play Developer accounts
+are already set up, so this is unblocked whenever ready to scope it.
