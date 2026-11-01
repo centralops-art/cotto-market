@@ -1,6 +1,6 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 next)
 
-Last updated: 2026-08-10. Phases 6 through 11 are all merged to `main` and
+Last updated: 2026-11-01. Phases 6 through 11 are all merged to `main` and
 fully gate-tested (§15, §16, §18, §19, §20, §21). Phase 11 (admin dashboard:
 KPIs incl. delivery network stats, vendor/customer lists + suspend, region
 settings CRUD, platform fee settings incl. automated free-trial expiry)
@@ -2601,10 +2601,9 @@ pool (`deliveries.tsx`) polls the pickup vendor's `lat`/`lng` fresh every
 needs the truck's *current* location to navigate to, not where it was
 when the order was accepted.
 
-**Not verified this session**: no on-device test yet (this environment
-can't run Expo) — `pnpm typecheck`/`lint`/`test` all pass across the
-mobile workspace, but the address-edit screen itself hasn't been exercised
-live. Worth a quick gate test: open Manage Storefront → edit address →
-confirm "Locate on map" is required again after any text edit → Save →
-confirm a subsequent delivery order from that vendor prices against the
-new address.
+**Gate-tested live by the founder, 2026-11-01: confirmed.** Edited a
+vendor's address in Manage Storefront, saved, then placed a delivery
+order against that vendor and confirmed the delivery fee changed in
+accordance with the updated address — the order-time Mapbox distance calc
+is correctly reading the new `lat`/`lng`. No bugs found; no code changes
+needed.
