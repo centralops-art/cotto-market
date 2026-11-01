@@ -164,6 +164,13 @@ export default function MenuBuilder() {
       </Pressable>
       <Text className="text-2xl font-bold text-white">Menu</Text>
 
+      {categoriesQuery.data?.length === 0 && (
+        <Text className="text-white/60">
+          No categories yet. Add one below, then add dishes to it — customers won't see your storefront's menu until
+          it has at least one item.
+        </Text>
+      )}
+
       {categoriesQuery.data?.map((category, index) => (
         <View key={category.id} className="gap-2 rounded-lg bg-white/5 p-3">
           <View className="flex-row items-center gap-2">

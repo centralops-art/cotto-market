@@ -1,4 +1,5 @@
 import "../global.css";
+import "../src/lib/sentry";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -9,6 +10,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { queryClient } from "../src/lib/query-client";
 import { AuthProvider, useAuth } from "../src/lib/auth-context";
+import { AppErrorBoundary } from "../src/components/error-boundary";
+import { Sentry } from "../src/lib/sentry";
 
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 
@@ -52,19 +55,23 @@ function RootNavigation() {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.market.cotto.app">
-          <QueryClientProvider client={queryClient}>
-            <AuthProvider>
-              <StatusBar style="auto" />
-              <RootNavigation />
-            </AuthProvider>
-          </QueryClientProvider>
-        </StripeProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AppErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.market.cotto.app">
+            <QueryClientProvider client={queryClient}>
+              <AuthProvider>
+                <StatusBar style="auto" />
+                <RootNavigation />
+              </AuthProvider>
+            </QueryClientProvider>
+          </StripeProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }
+
+export default Sentry.wrap(RootLayout);

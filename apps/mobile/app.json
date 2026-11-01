@@ -28,6 +28,14 @@
         {
           "locationWhenInUsePermission": "Cotto uses your location to show delivery distances while you're on duty in the Deliveries tab."
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "organization": "cotto-market",
+          "project": "cotto-mobile"
+        }
       ]
     ],
     "ios": {
