@@ -259,6 +259,16 @@ export default function VendorProfile() {
             </View>
           );
         })}
+
+        {itemsToRender.length === 0 &&
+          (visibleItems.length === 0 && (itemsQuery.data ?? []).length > 0 ? (
+            <Text className="text-white/60">
+              Nothing here matches your allergen preferences. Check your filters in Account to see this vendor's full
+              menu.
+            </Text>
+          ) : (
+            <Text className="text-white/60">This vendor hasn't added any dishes yet. Check back soon.</Text>
+          ))}
       </View>
 
       <View className="mt-6 px-6">
