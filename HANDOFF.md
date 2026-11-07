@@ -1,6 +1,6 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-01. Phases 6 through 11 are all merged to `main` and
+Last updated: 2026-11-07. Phases 6 through 11 are all merged to `main` and
 fully gate-tested (§15, §16, §18, §19, §20, §21). Phase 11 (admin dashboard:
 KPIs incl. delivery network stats, vendor/customer lists + suspend, region
 settings CRUD, platform fee settings incl. automated free-trial expiry)
@@ -12,8 +12,10 @@ gate-test-results note).
 
 **Phase 12 (polish, store submission, launch readiness — see the spec's
 phase table) is in progress.** Part 1 (Sentry, error boundaries, empty
-states) is merged — see §22. Store submission (TestFlight + Play internal
-track) has not been started.
+states) is merged — see §22. Part 2 (EAS submit credentials, store listing
+copy) and part 3 (self-service account deletion, a password-reset bug
+fix found along the way) are also merged — see §24/§25. Actually running
+`eas submit` / `eas build` for real store submission has not happened yet.
 
 This doc is meant to let a fresh Claude Code session pick up cleanly with
 zero re-discovery. Read this fully before touching code. (§11/§12 are kept
@@ -2777,3 +2779,182 @@ is cheap; the real work is everything downstream of that.
       but that was for internal fixtures, not a real beta cohort, so
       worth a deliberate decision here rather than defaulting to the old
       pattern).
+
+---
+
+## 24. Phase 12, part 2 — EAS submit credentials, store listing copy (2026-11-07, merged)
+
+Founder confirmed both Apple Developer and Google Play Developer accounts
+already exist. Walked through creating both store app records live
+(App Store Connect app "CottoMarket", bundle ID `market.cotto.app`;
+Google Play Console app "CottoMarket", package `market.cotto.app`) —
+neither existed before this session, not something this repo can capture
+since they live entirely in each platform's console.
+
+**What shipped:**
+1. `apps/mobile/eas.json`'s `submit.production` profile: iOS via an App
+   Store Connect API key (`ascAppId`/`ascApiKeyPath`/`ascApiKeyId`/
+   `ascApiKeyIssuerId` — avoids interactive Apple ID/2FA login for `eas
+   submit`), Android via a Google Play service account key, targeting
+   the `internal` track.
+2. `apps/mobile/credentials/` — new gitignored folder (`credentials/`
+   added to `apps/mobile/.gitignore`) holding the downloaded Apple `.p8`
+   key and Google service-account `.json` locally only. **Neither file
+   is committed or was ever read/printed by Claude** — the founder
+   handled both downloads and placements themselves; Claude only
+   confirmed file presence/gitignore coverage via `ls`/`git check-ignore`.
+3. `apps/mobile/store-listing.md` — full store listing copy for both
+   stores (subtitle, promotional text, keywords, short/full description,
+   data-safety inventory). Voice pulled directly from the live
+   cottomarket.com site (How It Works, What We Don't Do, FAQ pages)
+   rather than invented from scratch. Length-limited fields verified
+   programmatically, not hand-counted: subtitle 30/30, promo text
+   163/170, keywords 95/100, short description 77/80, full description
+   2172/4000.
+
+**A real gap found while drafting the data-safety section, not yet
+fixed at the time**: Apple requires apps with account creation to also
+offer in-app account deletion (App Store Review Guideline 5.1.1(v));
+Google Play has an equivalent requirement. Neither existed in this app.
+Fixed the same session — see §25.
+
+**Google Play Console navigation note** (current UI, subject to change):
+"API access" is no longer under a visible "Setup" sidebar section —
+it's reached via **Manage account → Users and permissions → Invite new
+users**, where a service account's email is invited like a human
+teammate and granted app-scoped permissions (Release to production,
+Release apps to testing tracks, Manage testing tracks). No dedicated
+"API access" page was found in this account's UI at all.
+
+**Not verified**: actually running `eas submit` with these credentials.
+First real use will be whenever store submission actually happens.
+
+---
+
+## 25. Phase 12, part 3 — self-service account deletion + a password-reset bug fix (2026-11-07, merged)
+
+Built while gate-testing account deletion itself, the founder hit two
+real, unrelated gaps: no admin-side password-reset capability, and the
+customer "forgot password" email link led to a blank page. Both root-
+caused and fixed in the same session — see below.
+
+### Account deletion
+
+Required by App Store Review Guideline 5.1.1(v) / Google Play's
+equivalent (apps with account creation must offer in-app account
+deletion). Three decisions confirmed with the founder before building:
+1. **Soft-delete, not hard delete**: deactivate + scrub PII (name/phone/
+   username/avatar), keep order/review history intact. `orders.
+   customer_profile_id` is `on delete restrict` (0006) anyway, so a real
+   hard delete isn't even possible once an account has order history —
+   this decision is also the only one the schema would actually allow.
+2. **Dual-mode accounts (own a vendor)**: block deletion unless the
+   vendor is `draft`/`unpublished` first — vendors already have
+   self-service access to that toggle, no new UI needed for it.
+3. **Active orders**: block deletion while the caller has any non-final
+   order as customer, cook, or driver — same "never disrupt money/
+   orders in motion" principle as vendor suspend (Phase 11) and the
+   unclaimed-delivery fallback (Phase 9).
+
+**What shipped:**
+1. Migration 0056: `'deleted'` added to `profile_status` (0050).
+2. New edge function `delete-own-account`: runs the precondition checks
+   (vendor status; non-final `vendor_suborders` as cook; active
+   unreleased `delivery_claims` as driver; non-final `vendor_suborders`
+   as customer, via the `!inner` embedded-filter idiom first used in
+   Phase 8's gate-test fix), then flips `profiles.status` to `'deleted'`,
+   nulls `full_name`/`phone`/`username`/`avatar_url`, bans the auth user
+   (`auth.admin.updateUserById(..., {ban_duration: "876000h"})` — **not**
+   `deleteUser`, which would cascade-delete `profiles` and everything
+   downstream per the `on delete cascade` FK, undoing the whole
+   soft-delete decision), and globally invalidates the caller's existing
+   session tokens (`auth.admin.signOut(token, "global")`).
+3. `checkout-create-payment-intent` also rejects a deleted account's
+   session (defense in depth — the ban already prevents getting a valid
+   session in the first place).
+4. Mobile: "Delete my account" in the Account tab's new danger-zone
+   section, confirm dialog, surfaces the specific blocking reason from
+   the edge function (same error-unwrapping pattern as
+   `order-tracking/[id].tsx`'s `resolveOffer`).
+5. Admin: customers list/detail recognize the new status (muted badge,
+   no Suspend/Reactivate controls on an already-deleted account — just
+   an explanatory message).
+
+**Session-specific limitation, worth knowing for next time**: the usual
+throwaway-fixture Node script against hosted Supabase (real sessions via
+`auth.admin.generateLink` + `verifyOtp`) could not run this session —
+fetching the service-role key was blocked by this session's permission
+model as "Credential Materialization." **Not verified server-side at
+all** — this shipped straight to the founder's own hands-on gate test
+instead of the usual verify-then-gate-test order. Production database
+migration push, edge function deploys, and the Supabase Auth config push
+(for the password-reset fix below) were also each blocked individually
+as production-deploy actions, and only proceeded after the founder
+explicitly said to go ahead each time.
+
+### Password-reset bug fix (found during the above gate test)
+
+**Bug, confirmed live, not theoretical**: the "forgot password" email
+sent customers/vendors to `cotto://reset-password` — a bare custom URL
+scheme with no fallback. Opened anywhere other than a device with the
+app already installed (checking email on a computer, an email client
+that won't hand off a custom scheme), it shows a blank page. Same class
+of cross-device problem as the admin's own magic-link issue from Phase 6
+(§9 bug #6/§12 item 3), except here there was no fallback at all.
+
+**Fix**: the reset email now points at a new public page on the already-
+live admin app, `admin.cottomarket.com/reset-password` (same "has
+nothing to do with Cotto Admin, just reuses its already-deployed
+infrastructure" reasoning as the existing `/email-confirmed` page). That
+page parses the recovery tokens Supabase appends as a URL fragment (the
+**mobile client uses implicit flow, not PKCE** — no `flowType` is set
+in `apps/mobile/src/lib/supabase.ts`, so there's no `?code=` to exchange;
+this is the same hash-fragment parsing the mobile app's own
+`(auth)/reset-password.tsx` screen already did, ported to web), sets the
+session, updates the password, signs back out.
+
+**Deliberately left in place, not removed**: the mobile app's own
+`(auth)/reset-password.tsx` screen and the `cotto://reset-password`
+redirect URL in `supabase/config.toml`'s allowlist. Still correct code,
+just not the active path — kept for a future proper Universal Links
+setup (which needs real domain-association infra this project doesn't
+have yet), with a comment in both places explaining why.
+
+**Also added, the admin capability this gap exposed**: a "Send password
+reset email" button on the customer detail page (`apps/admin/src/app/
+dashboard/customers/[id]/customer-actions.tsx`), via a new
+`POST /api/admin/customers/[id]/reset-password` route. Sends the same
+(now-fixed) email a self-service "forgot password" would.
+
+**Deployed and live**: migration 0056, `delete-own-account`,
+`checkout-create-payment-intent` (redeployed), and the Supabase Auth
+redirect URL allowlist update (`supabase config push`) are all confirmed
+live on hosted Supabase. **Not yet gate-tested by the founder** — next
+session should start here: the walkthrough below was handed off but not
+yet confirmed completed.
+
+### Gate-test walkthrough (not yet run)
+
+Use a **throwaway test account**, not `CPITTS1183@gmail.com` (owns
+Tester Kitchen, has real order history) — deletion bans the auth account
+and scrubs PII with no in-app undo.
+
+1. Sign up a brand-new account (e.g. a `+alias` email) in the mobile app,
+   complete the profile step.
+2. Account tab → scroll past "Sign out" → **Delete my account** → confirm.
+   Should succeed immediately (no vendor, no orders) and sign out
+   automatically.
+3. Try signing back in with that email/password — should **fail**
+   (confirms the auth ban).
+4. Admin app → Customers → find that account → confirm a **deleted**
+   badge, blank name, and "This customer deleted their own account..."
+   in place of Suspend/Reactivate.
+5. *(Optional, needs a second throwaway account)* Become a vendor on it,
+   try deleting while still `draft`/`pending_review` — should block with
+   "Please unpublish your storefront...". Not pre-verified server-side
+   this session, worth the extra few minutes if time allows.
+6. For the password-reset fix: use "Forgot password" on any test account
+   from a browser (not the app) — the email link should land on a real
+   password-reset page at `admin.cottomarket.com/reset-password`, not a
+   blank page. Also try the new admin "Send password reset email" button
+   on a customer's detail page and confirm the same email arrives.
