@@ -166,12 +166,19 @@ additional_redirect_urls = [
   "https://admin.cottomarket.com",
   "https://admin.cottomarket.com/auth/callback",
   "https://admin.cottomarket.com/email-confirmed",
+  "https://admin.cottomarket.com/reset-password",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3000/auth/callback",
   "http://127.0.0.1:3000/email-confirmed",
+  "http://127.0.0.1:3000/reset-password",
   "http://localhost:3000",
   "http://localhost:3000/auth/callback",
   "http://localhost:3000/email-confirmed",
+  "http://localhost:3000/reset-password",
+  # cotto://reset-password: kept allowlisted for the mobile app's own
+  # (auth)/reset-password.tsx screen, which still exists for a future
+  # Universal Links setup -- not the active path right now (see
+  # apps/admin/src/app/reset-password/page.tsx for why).
   "cotto://reset-password",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).

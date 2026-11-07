@@ -10,6 +10,7 @@ export function CustomerActions({ profileId, status }: { profileId: string; stat
   const [showSuspend, setShowSuspend] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
 
   async function post(path: string, body?: unknown) {
     setLoading(true);
@@ -27,6 +28,37 @@ export function CustomerActions({ profileId, status }: { profileId: string; stat
     router.refresh();
   }
 
+  async function sendPasswordReset() {
+    setLoading(true);
+    setError(null);
+    setResetSent(false);
+    const res = await fetch(`/api/admin/customers/${profileId}/reset-password`, { method: "POST" });
+    const result = await res.json();
+    setLoading(false);
+    if (result.error) return setError(result.error);
+    setResetSent(true);
+  }
+
+  const resetPasswordButton = (
+    <div className="flex flex-col gap-2">
+      <Button variant="outline" disabled={loading} onClick={sendPasswordReset}>
+        Send password reset email
+      </Button>
+      {resetSent && <p className="text-sm text-muted-foreground">Reset email sent.</p>}
+    </div>
+  );
+
+  if (status === "deleted") {
+    return (
+      <div className="mt-6 border-t border-border pt-6">
+        <p className="text-sm text-muted-foreground">
+          This customer deleted their own account. Their name, phone, and photo have been removed; past orders and
+          reviews remain for records. No admin action is available here.
+        </p>
+      </div>
+    );
+  }
+
   if (status === "suspended") {
     return (
       <div className="mt-6 flex flex-col gap-3 border-t border-border pt-6">
@@ -34,6 +66,7 @@ export function CustomerActions({ profileId, status }: { profileId: string; stat
         <Button disabled={loading} onClick={() => post("reactivate")}>
           Reactivate
         </Button>
+        {resetPasswordButton}
       </div>
     );
   }
@@ -41,6 +74,7 @@ export function CustomerActions({ profileId, status }: { profileId: string; stat
   return (
     <div className="mt-6 flex flex-col gap-3 border-t border-border pt-6">
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {resetPasswordButton}
       {!showSuspend ? (
         <Button variant="destructive" disabled={loading} onClick={() => setShowSuspend(true)}>
           Suspend

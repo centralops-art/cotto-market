@@ -20,7 +20,12 @@ export default function ForgotPassword() {
 
   async function onSubmit(values: RequestPasswordResetInput) {
     setFormError(null);
-    const { error } = await requestPasswordReset(supabase, values, "cotto://reset-password");
+    // Web-based, not the cotto:// deep link -- a bare custom URL scheme has
+    // no fallback if the link is opened anywhere other than a device with
+    // the app already installed (e.g. checking email on a computer), which
+    // is exactly what broke in practice. See apps/admin's reset-password
+    // page for the full reasoning.
+    const { error } = await requestPasswordReset(supabase, values, "https://admin.cottomarket.com/reset-password");
     if (error) setFormError(error.message);
     else setSent(true);
   }
