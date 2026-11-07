@@ -129,6 +129,9 @@ Deno.serve(async (req) => {
     if (callerProfile?.status === "suspended") {
       return json({ error: "Your account has been suspended. Contact support if you believe this is a mistake." }, 403);
     }
+    if (callerProfile?.status === "deleted") {
+      return json({ error: "This account has been deleted." }, 403);
+    }
 
     const { data: cart, error: cartError } = await supabase
       .from("carts")

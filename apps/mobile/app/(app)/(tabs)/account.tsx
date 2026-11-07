@@ -1,7 +1,7 @@
 import { ALLERGENS, ALLERGEN_LABELS, type Allergen } from "@cotto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Text, View, Pressable, ActivityIndicator, ScrollView, Switch } from "react-native";
+import { Alert, Text, View, Pressable, ActivityIndicator, ScrollView, Switch } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 
@@ -120,6 +120,36 @@ export default function Account() {
 
   async function signOut() {
     await supabase.auth.signOut();
+  }
+
+  const deleteAccount = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke("delete-own-account");
+      if (error) {
+        // supabase-js's FunctionsHttpError.message is generic -- the real
+        // {error: "..."} body lives on error.context, unread by default
+        // (same gap fixed in order-tracking/[id].tsx's resolveOffer).
+        const context = (error as { context?: Response }).context;
+        const body = await context?.json().catch(() => null);
+        throw new Error(body?.error ?? error.message);
+      }
+      return data;
+    },
+    onSuccess: async () => {
+      await supabase.auth.signOut();
+    },
+    onError: (err) => Alert.alert("Can't delete your account yet", (err as Error).message),
+  });
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      "Delete your account?",
+      "This signs you out permanently and removes your name, phone, and photo from Cotto. Your past orders and reviews stay on record (anonymized) for receipts and dispute history. This can't be undone from the app -- contact support if you change your mind.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete my account", style: "destructive", onPress: () => deleteAccount.mutate() },
+      ]
+    );
   }
 
   const vendor = vendorQuery.data;
@@ -256,6 +286,20 @@ export default function Account() {
       <Pressable className="mt-8 items-center py-3" onPress={signOut}>
         <Text className="text-white/60">Sign out</Text>
       </Pressable>
+
+      <View className="mt-2 items-center gap-2 border-t border-white/10 pt-6">
+        <Pressable
+          className="items-center py-3 disabled:opacity-50"
+          disabled={deleteAccount.isPending}
+          onPress={confirmDeleteAccount}
+        >
+          {deleteAccount.isPending ? (
+            <ActivityIndicator color="#f87171" />
+          ) : (
+            <Text className="text-red-400">Delete my account</Text>
+          )}
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }

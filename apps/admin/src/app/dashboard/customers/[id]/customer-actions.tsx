@@ -27,6 +27,17 @@ export function CustomerActions({ profileId, status }: { profileId: string; stat
     router.refresh();
   }
 
+  if (status === "deleted") {
+    return (
+      <div className="mt-6 border-t border-border pt-6">
+        <p className="text-sm text-muted-foreground">
+          This customer deleted their own account. Their name, phone, and photo have been removed; past orders and
+          reviews remain for records. No admin action is available here.
+        </p>
+      </div>
+    );
+  }
+
   if (status === "suspended") {
     return (
       <div className="mt-6 flex flex-col gap-3 border-t border-border pt-6">
