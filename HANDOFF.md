@@ -1,6 +1,9 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-07. Phases 6 through 11 are all merged to `main` and
+Last updated: 2026-11-07. Phase 12 part 3 (account deletion + password-reset
+fix, §25) is gate-tested; two bugs found during that test (stuck
+complete-profile redirect, "User is banned" sign-in message) are fixed and
+merged (PRs #28, #29). Phases 6 through 11 are all merged to `main` and
 fully gate-tested (§15, §16, §18, §19, §20, §21). Phase 11 (admin dashboard:
 KPIs incl. delivery network stats, vendor/customer lists + suspend, region
 settings CRUD, platform fee settings incl. automated free-trial expiry)
@@ -2831,7 +2834,7 @@ First real use will be whenever store submission actually happens.
 
 ---
 
-## 25. Phase 12, part 3 — self-service account deletion + a password-reset bug fix (2026-11-07, merged)
+## 25. Phase 12, part 3 — self-service account deletion + a password-reset bug fix (2026-11-07, merged, gate-tested)
 
 Built while gate-testing account deletion itself, the founder hit two
 real, unrelated gaps: no admin-side password-reset capability, and the
@@ -2933,7 +2936,7 @@ live on hosted Supabase. **Not yet gate-tested by the founder** — next
 session should start here: the walkthrough below was handed off but not
 yet confirmed completed.
 
-### Gate-test walkthrough (not yet run)
+### Gate-test walkthrough
 
 Use a **throwaway test account**, not `CPITTS1183@gmail.com` (owns
 Tester Kitchen, has real order history) — deletion bans the auth account
@@ -2958,3 +2961,28 @@ and scrubs PII with no in-app undo.
    password-reset page at `admin.cottomarket.com/reset-password`, not a
    blank page. Also try the new admin "Send password reset email" button
    on a customer's detail page and confirm the same email arrives.
+
+### Gate test results (2026-11-07) — core steps passed, two bugs found and fixed
+
+Steps 1–4 and 6 passed. Step 5 (optional, deletion blocked while a vendor
+is still `draft`/`pending_review`) wasn't verified — the founder didn't
+get the timing right on a second throwaway account before running out of
+time; still not server-side verified.
+
+Two real bugs turned up along the way, both fixed and merged same-day:
+
+- **Signup got stuck on "One more thing."** `_layout.tsx`'s redirect
+  effect only pushed to `(app)/(tabs)` `if (!inAppGroup)` — but the
+  complete-profile screen itself lives inside the `(app)` route group, so
+  `inAppGroup` was already `true` while sitting on it. The phone-number
+  save was succeeding every time; nothing ever told the router to leave
+  the screen afterward, so Continue just spun and landed back on the same
+  form. Fixed by also redirecting `if (onCompleteProfile)`. PR #28,
+  commit `596c92a`.
+- **Deleted-account sign-in showed "User is banned."** Technically
+  correct (self-deletion bans the auth account, see §25 above) but reads
+  like a suspension or security block, not the customer's own choice.
+  `signInWithPassword` (packages/shared/src/auth.ts) now rewrites that
+  specific GoTrue message to "This account has been deleted by the user"
+  before it reaches the UI. Scoped to mobile sign-in only. PR #29,
+  commit `cbb3d86`.
