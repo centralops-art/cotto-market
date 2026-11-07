@@ -60,7 +60,14 @@ export async function signUpWithPassword(client: CottoSupabaseClient, input: Sig
 
 export async function signInWithPassword(client: CottoSupabaseClient, input: SignInInput) {
   const { email, password } = signInSchema.parse(input);
-  return client.auth.signInWithPassword({ email, password });
+  const result = await client.auth.signInWithPassword({ email, password });
+  // GoTrue's literal "User is banned" is how self-deletion (delete-own-account,
+  // Phase 12) manifests at sign-in -- reword it so it doesn't read like a
+  // suspension or a security block.
+  if (result.error && /banned/i.test(result.error.message)) {
+    result.error.message = "This account has been deleted by the user";
+  }
+  return result;
 }
 
 export async function signOut(client: CottoSupabaseClient) {
