@@ -39,7 +39,7 @@ function RootNavigation() {
       return;
     }
 
-    if (!inAppGroup) {
+    if (!inAppGroup || onCompleteProfile) {
       router.replace("/(app)/(tabs)");
     }
   }, [session, profile, loading, segments, router, isPasswordRecovery]);
