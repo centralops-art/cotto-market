@@ -18,6 +18,9 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# EAS submit credentials (Apple .p8 key, Google service account JSON)
+credentials/
+
 # Metro
 .metro-health-check*
 

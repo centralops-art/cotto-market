@@ -16,6 +16,17 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6832036494",
+        "ascApiKeyPath": "./credentials/AuthKey_VG6PZYBG45.p8",
+        "ascApiKeyId": "VG6PZYBG45",
+        "ascApiKeyIssuerId": "5ef4223e-b305-4fcc-8671-92fb3389be06"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./credentials/cottomarketplay-398aa288e552.json",
+        "track": "internal"
+      }
+    }
   }
 }
