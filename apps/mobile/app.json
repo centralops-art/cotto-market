@@ -36,13 +36,15 @@
           "organization": "cotto-market",
           "project": "cotto-mobile"
         }
-      ]
+      ],
+      "./plugins/withDisableSentryAutoUpload.js"
     ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "market.cotto.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Cotto uses your location to show delivery distances while you're on duty in the Deliveries tab."
+        "NSLocationWhenInUseUsageDescription": "Cotto uses your location to show delivery distances while you're on duty in the Deliveries tab.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
