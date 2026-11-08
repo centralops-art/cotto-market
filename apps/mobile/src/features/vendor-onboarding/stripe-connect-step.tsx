@@ -13,7 +13,6 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [detailsSubmitted, setDetailsSubmitted] = useState(false);
-  const [stripeUnconfigured, setStripeUnconfigured] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,7 +25,6 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
       });
       if (error) throw error;
       if (data?.error) {
-        if (String(data.error).includes("isn't configured")) setStripeUnconfigured(true);
         setFormError(data.error);
         return;
       }
@@ -103,17 +101,12 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
         </Pressable>
         <Pressable
           className="flex-1 items-center rounded-lg bg-cotto-accent py-3 disabled:opacity-50"
-          disabled={submitting || (!detailsSubmitted && !stripeUnconfigured)}
+          disabled={submitting || !detailsSubmitted}
           onPress={submitApplication}
         >
           {submitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Submit Application</Text>}
         </Pressable>
       </View>
-      {stripeUnconfigured && (
-        <Text className="text-center text-xs text-white/50">
-          Stripe isn't configured yet -- submitting now skips payout setup (founder TODO).
-        </Text>
-      )}
     </View>
   );
 }
