@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { CottageFoodDisclaimerModal, useCottageFoodDisclaimer } from "../../../src/components/cottage-food-disclaimer-modal";
 import { supabase } from "../../../src/lib/supabase";
 
 export default function Browse() {
@@ -10,11 +11,16 @@ export default function Browse() {
   const [queryText, setQueryText] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [vendorType, setVendorType] = useState<VendorType | null>(null);
+  const cottageFoodDisclaimer = useCottageFoodDisclaimer();
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedQuery(queryText.trim()), 300);
     return () => clearTimeout(timeout);
   }, [queryText]);
+
+  useEffect(() => {
+    if (vendorType === "home_cook") cottageFoodDisclaimer.showIfUnseen();
+  }, [vendorType]);
 
   const vendorsQuery = useQuery({
     queryKey: ["browse_vendors", debouncedQuery, vendorType],
@@ -114,6 +120,8 @@ export default function Browse() {
           </View>
         )}
       </ScrollView>
+
+      <CottageFoodDisclaimerModal visible={cottageFoodDisclaimer.visible} onDismiss={cottageFoodDisclaimer.dismiss} />
     </View>
   );
 }
