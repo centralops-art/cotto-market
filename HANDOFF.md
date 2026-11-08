@@ -1,9 +1,13 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-07. Phase 12 part 3 (account deletion + password-reset
-fix, §25) is gate-tested; two bugs found during that test (stuck
-complete-profile redirect, "User is banned" sign-in message) are fixed and
-merged (PRs #28, #29). Phases 6 through 11 are all merged to `main` and
+Last updated: 2026-11-08. Awning-styled tab bar + a full placeholder-text
+sweep merged (§26, PRs #30-#35): delivery partner agreement text, a new
+cottage-food-disclaimer popup for customers, dead Stripe TODO cleanup,
+support_email fix, and Browse filter pill cleanup. Phase 12 part 3 (account
+deletion + password-reset fix, §25) is gate-tested; two bugs found during
+that test (stuck complete-profile redirect, "User is banned" sign-in
+message) are fixed and merged (PRs #28, #29). Phases 6 through 11 are all
+merged to `main` and
 fully gate-tested (§15, §16, §18, §19, §20, §21). Phase 11 (admin dashboard:
 KPIs incl. delivery network stats, vendor/customer lists + suspend, region
 settings CRUD, platform fee settings incl. automated free-trial expiry)
@@ -2986,3 +2990,84 @@ Two real bugs turned up along the way, both fixed and merged same-day:
   specific GoTrue message to "This account has been deleted by the user"
   before it reaches the UI. Scoped to mobile sign-in only. PR #29,
   commit `cbb3d86`.
+
+## 26. Awning branding + placeholder-text sweep (2026-11-07/08, merged)
+
+Bottom tab bar restyle, then a full sweep for leftover placeholder
+content across the codebase, prompted by finding the cottage food
+disclaimer was still unreviewed boilerplate. Six PRs, #30-#35, merged
+in order.
+
+### Awning-styled tab bar (PR #30)
+
+The bottom nav was flat, undifferentiated brown with no icons. Each
+button now renders as its own alternating red/cream block (exact hex
+values read off cottomarket.com's scalloped-awning CSS --
+`repeating-radial-gradient`/`repeating-linear-gradient`), on a dark
+brown frame, active tab outlined in the existing brand accent. New
+`apps/mobile/src/components/awning-tab-button.tsx`, colors in
+`tailwind.config.js`'s `awning` tokens. Custom `tabBarButton` per
+screen, since expo-router doesn't allow combining a custom
+`tabBarButton` with the `href`-based tab-hiding this project
+previously used for the role-gated Kitchen/Deliveries tabs -- hiding
+now lives in `AwningTabButton`'s own `visible` prop instead. Iterated
+live on the founder's device: started as a rounded dome per button,
+flattened to a near-edge-to-edge rounded rectangle once labels started
+clipping, switched truncation to text wrapping, then bumped label
+weight to bold.
+
+### Placeholder-text sweep
+
+Codebase-wide search for leftover placeholder/TODO content turned up
+four real gaps beyond the cottage food disclaimer (§25):
+
+- **Delivery partner agreement text (PR #32).**
+  `system_settings.delivery_partner_agreement_md`, shown live during
+  delivery-partner onboarding, still had the "must be reviewed by an
+  Illinois attorney" placeholder from migration 0009. Founder's call:
+  reuse the already-reviewed Section 9 of the Terms and Conditions
+  (cottomarket.com/terms-and-conditions) rather than wait on separate
+  standalone agreement copy. Migration 0058, applied to hosted DB.
+- **Cottage food disclaimer never shown to customers (PR #33).** The
+  MVP spec's own compliance checklist requires it "shown on each food
+  item detail and at checkout," but it only ever appeared once, during
+  vendor onboarding. Founder's call: rather than repeat it on every
+  item/checkout screen, show it once as a popup the first time a
+  customer taps the "Home cook" filter on Browse (text is also always
+  in the Terms and Conditions). New
+  `apps/mobile/src/components/cottage-food-disclaimer-modal.tsx`,
+  dismissal persisted via AsyncStorage (device-scoped).
+- **Dead Stripe-unconfigured UI branch (PR #34).**
+  `STRIPE_SECRET_KEY` has been live since Phase 8's gate test, so
+  `stripe-connect-step.tsx`'s "(founder TODO)" fallback message could
+  no longer trigger -- but removing it also closed a latent bypass:
+  that state let a vendor submit their application without completing
+  Stripe KYC whenever it was true. Also reworded the edge function's
+  missing-key error away from "ask the founder to set
+  STRIPE_SECRET_KEY" and dropped the stale "blocked on Connect
+  platform account approval" TODO comment.
+- **`support_email` default (PR #34).** Was
+  `CentralOps@CottoMarket.com` since migration 0009, unused by any app
+  code so far; now matches what's published on the Terms page --
+  `support@cottomarket.com`. Migration 0059, updates both the column
+  default and the existing hosted row.
+
+Also found, not yet acted on:
+
+- `system_settings.delivery_partner_agreement_md`'s new text is a
+  faithful lift of Terms §9's bullets, not a separately-drafted
+  standalone agreement -- fine per the founder, but worth knowing if
+  legal ever wants the two documents to diverge.
+- Region `dispatch_contact_name`/`dispatch_phone`/`dispatch_emails`
+  are blank by design, already editable in the admin Region settings
+  page -- confirmed not a placeholder-text bug, no action taken.
+
+### Browse filter pills (PR #35)
+
+Cosmetic, same batch: Food Truck moved to the first pill after All
+(`BROWSE_FILTER_ORDER` in `apps/mobile/app/(app)/(tabs)/index.tsx`,
+scoped to Browse only -- vendor onboarding's own type-selection order
+is untouched); all pill labels Title Cased; "Farmers market
+stallholder" shortened to "Farmers Market" (shared
+`VENDOR_TYPE_LABELS`, so onboarding's checkboxes pick up the same
+wording).
