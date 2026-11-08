@@ -4,10 +4,10 @@ export const VENDOR_TYPES = ["home_cook", "farmers_market", "pop_up", "food_truc
 export type VendorType = (typeof VENDOR_TYPES)[number];
 
 export const VENDOR_TYPE_LABELS: Record<VendorType, string> = {
-  home_cook: "Home cook",
-  farmers_market: "Farmers market stallholder",
-  pop_up: "Pop-up",
-  food_truck: "Food truck",
+  home_cook: "Home Cook",
+  farmers_market: "Farmers Market",
+  pop_up: "Pop-Up",
+  food_truck: "Food Truck",
 };
 
 export const businessBasicsSchema = z.object({
