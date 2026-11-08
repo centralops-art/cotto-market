@@ -1,6 +1,11 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-08. Awning-styled tab bar + a full placeholder-text
+Last updated: 2026-11-08. First real app store submission is live (§27):
+both Android (Play internal track) and iOS (TestFlight, processing) built
+and submitted successfully, test-mode Stripe, after fixing three real EAS
+build bugs (export-compliance flag, Sentry/sentry-cli build failures on both
+platforms). Delivery fee calculation confirmed correct, no bugs (§27).
+Awning-styled tab bar + a full placeholder-text
 sweep merged (§26, PRs #30-#35): delivery partner agreement text, a new
 cottage-food-disclaimer popup for customers, dead Stripe TODO cleanup,
 support_email fix, and Browse filter pill cleanup. Phase 12 part 3 (account
@@ -3071,3 +3076,98 @@ is untouched); all pill labels Title Cased; "Farmers market
 stallholder" shortened to "Farmers Market" (shared
 `VENDOR_TYPE_LABELS`, so onboarding's checkboxes pick up the same
 wording).
+
+## 27. Delivery fee calculation confirmed; first real TestFlight/Play submission (2026-11-08)
+
+### Delivery fee calculation review
+
+Founder asked for confirmation of how the delivery fee is calculated,
+investigated in a separate session (see [[project-delivery-fee-calculation-review]]
+if reading this from memory). Findings, no bugs found:
+
+- Region settings (`base_delivery_fee_cents`, `per_mile_fee_cents`,
+  `free_delivery_miles`, `delivery_payout_split_pct`) feed a formula
+  shared between `packages/shared/src/fees.ts` and
+  `checkout-create-payment-intent`: `billableMiles = max(0, oneWayMiles
+  - free_delivery_miles)`, `feeCents = base_delivery_fee_cents +
+  round(billableMiles * per_mile_fee_cents)`.
+- **Multi-vendor orders get a separate fee per vendor, not one
+  combined fee.** Each vendor's leg is priced independently (that
+  vendor's kitchen → the customer's address, one-way, via Mapbox),
+  stored on that vendor's own `vendor_suborders.delivery_fee_cents`.
+  The only combining is a plain sum for the single Stripe charge
+  (`orders.delivery_fee_cents`) -- billing convenience only, not a
+  routing or fee-calculation combination. Each vendor's delivery is
+  also an independently claimable job, potentially a different driver,
+  with its own payout split. No shared multi-stop route exists
+  anywhere in the code, matching the "cooperative delivery network, no
+  dedicated fleet" model this project is built around.
+
+### First real app store submission (TestFlight + Play internal track)
+
+Founder confirmed scope before starting: TestFlight + Play internal
+track only (not public release), Stripe staying in test mode (bundled
+`EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` verified as `pk_test_...` before
+building). EAS submit credentials were configured back in Phase 12
+part 2 (§24) but never actually exercised until now -- this was the
+first real `eas build`/`eas submit` run, and it surfaced several real,
+previously-latent problems:
+
+- **iOS build-signing credentials never existed.** `eas credentials -p
+  ios` needs a real interactive terminal; repeatedly failed in `cmd.exe`
+  and even Windows Terminal specifically at the Issuer ID prompt
+  (unrelated red herring, see below) and separately failed
+  authenticating with the founder's Apple ID on an older eas-cli
+  (20.5.1, "iTunes service key is empty"). Upgrading eas-cli globally
+  to 27.5.0 fixed the Apple ID auth; from there, `eas credentials` →
+  Build Credentials → "All: Set up all the required credentials"
+  auto-generated a real Distribution Certificate + Provisioning
+  Profile against Apple's servers, now stored server-side by EAS
+  (nothing committed for this part). The Issuer ID prompt bug itself
+  was never resolved (persisted across `cmd.exe`, PowerShell, and
+  Windows Terminal, and across an eas-cli upgrade) -- abandoned that
+  path (API-key-based credential setup) in favor of Apple-ID login,
+  which worked cleanly once upgraded.
+- **`app.json` was missing `ios.infoPlist.ITSAppUsesNonExemptEncryption`**,
+  required before TestFlight testers can install a build. Set to
+  `false` (app only uses standard HTTPS -- Supabase, Stripe, Mapbox,
+  Sentry -- no custom encryption).
+- **Android's Sentry Gradle task failed to spawn `sentry-cli`.**
+  Worked around with `SENTRY_DISABLE_AUTO_UPLOAD=true` on the
+  production build profile in `eas.json`. Crash reporting itself is
+  unaffected; this only skips uploading debug symbols/source maps for
+  nicer stack traces in Sentry's dashboard.
+- **iOS's "Upload Debug Symbols to Sentry" Xcode phase failed with
+  `MODULE_NOT_FOUND`** trying to `require('@sentry/cli/package.json')`.
+  Real root cause, confirmed on disk: `@sentry/cli` is a transitive
+  dependency of `@sentry/react-native`, never hoisted into
+  `apps/mobile/node_modules` under this project's pnpm strict linking,
+  so Node's `require` from the iOS script's working directory
+  genuinely couldn't find it -- the `SENTRY_DISABLE_AUTO_UPLOAD` env
+  var that fixed Android didn't help here, since the script resolves
+  the module *before* checking that flag. Fixed by declaring
+  `@sentry/cli` as an explicit devDependency pinned to the version
+  already resolved in the pnpm store, so pnpm links it where the
+  script expects it. Also added
+  `apps/mobile/plugins/withDisableSentryAutoUpload.js` (a config
+  plugin that injects the same disable flag into the generated
+  `ios/.xcode.env` during prebuild) as defense in depth, since EAS
+  build-profile env vars don't reach Xcode Run Script phases the way
+  they reach Android's Gradle task.
+
+All fixed and merged, PR #36, commit `8f14284`.
+
+**Both platforms submitted successfully:**
+- Android → Google Play internal testing track, release status
+  `COMPLETED`.
+- iOS → uploaded to App Store Connect, processing for TestFlight
+  (Apple emails when done, usually 5-10 min). One non-blocking note:
+  submission skipped an optional "TestFlight setup" automation step
+  due to limited API key permissions -- the founder may need to
+  manually add testers to the TestFlight group once processing
+  finishes.
+
+Not yet done: actual store-listing screenshots (founder's own
+discretion, said they'd do this on-device per §24), and the full
+public-release submission (this was internal/beta tracks only, per
+explicit founder choice).
