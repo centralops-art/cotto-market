@@ -1,10 +1,15 @@
-import { VENDOR_TYPES, VENDOR_TYPE_LABELS, type VendorType } from "@cotto/shared";
+import { VENDOR_TYPE_LABELS, type VendorType } from "@cotto/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { CottageFoodDisclaimerModal, useCottageFoodDisclaimer } from "../../../src/components/cottage-food-disclaimer-modal";
 import { supabase } from "../../../src/lib/supabase";
+
+// Browse's own filter-pill order -- Food Truck first after All, per the
+// founder. Distinct from VENDOR_TYPES (vendor onboarding's type-selection
+// order), which this doesn't affect.
+const BROWSE_FILTER_ORDER: VendorType[] = ["food_truck", "home_cook", "farmers_market", "pop_up"];
 
 export default function Browse() {
   const router = useRouter();
@@ -79,7 +84,7 @@ export default function Browse() {
           >
             <Text className={vendorType === null ? "text-cotto-accent" : "text-white/70"}>All</Text>
           </Pressable>
-          {VENDOR_TYPES.map((type) => (
+          {BROWSE_FILTER_ORDER.map((type) => (
             <Pressable
               key={type}
               onPress={() => setVendorType(vendorType === type ? null : type)}
