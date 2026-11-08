@@ -43,6 +43,24 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
     licenseBackSignedUrl = data?.signedUrl ?? null;
   }
 
+  // Family / team-member drivers (migration 0060), each with signed URLs for
+  // their license images (5-minute expiry, same as above).
+  const { data: teamDriverRows } = await admin.service
+    .from("vendor_team_drivers")
+    .select("*, vendor_team_members(display_name)")
+    .eq("vendor_id", vendor.id)
+    .order("created_at");
+  const signLicense = async (path: string) =>
+    (await admin.service.storage.from("drivers-licenses").createSignedUrl(path, 300)).data?.signedUrl ?? null;
+  const teamDrivers = await Promise.all(
+    (teamDriverRows ?? []).map(async (row) => ({
+      ...row,
+      memberName: (row.vendor_team_members as unknown as { display_name: string } | null)?.display_name ?? "Team member",
+      frontSignedUrl: await signLicense(row.drivers_license_front_url),
+      backSignedUrl: await signLicense(row.drivers_license_back_url),
+    }))
+  );
+
   return (
     <main className="mx-auto max-w-2xl p-8">
       <Link href="/dashboard/vendors" className="text-sm text-muted-foreground hover:underline">
@@ -163,6 +181,74 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
           </div>
 
           <DeliveryProfileActions deliveryProfileId={deliveryProfile.id} status={deliveryProfile.status} />
+        </div>
+      )}
+
+      {teamDrivers.length > 0 && (
+        <div className="mt-10 border-t border-border pt-6">
+          <h2 className="text-lg font-semibold">Family drivers</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Team members who deliver under this storefront&apos;s account. Each needs their own license on file.
+          </p>
+
+          {teamDrivers.map((td) => (
+            <div key={td.id} className="mt-6 rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">{td.memberName}</h3>
+                <StatusBadge status={td.status} />
+              </div>
+
+              {td.rejected_reason && (
+                <p className="mt-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  Last rejection reason: {td.rejected_reason}
+                </p>
+              )}
+              {td.suspended_reason && (
+                <p className="mt-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  Suspension reason: {td.suspended_reason}
+                </p>
+              )}
+
+              <dl className="mt-4 grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Vehicle type</dt>
+                <dd>{td.vehicle_type}</dd>
+                <dt className="text-muted-foreground">License expires</dt>
+                <dd>{td.drivers_license_expires_on}</dd>
+                <dt className="text-muted-foreground">Insurance attested</dt>
+                <dd>{new Date(td.insurance_attested_at).toLocaleString()}</dd>
+                <dt className="text-muted-foreground">Agreement accepted</dt>
+                <dd>{new Date(td.delivery_agreement_accepted_at).toLocaleString()}</dd>
+              </dl>
+
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="mb-2 text-sm text-muted-foreground">License (front)</p>
+                  {td.frontSignedUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={td.frontSignedUrl} alt={`${td.memberName} license front`} className="max-w-full rounded-lg border border-border" />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Image unavailable.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="mb-2 text-sm text-muted-foreground">License (back)</p>
+                  {td.backSignedUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={td.backSignedUrl} alt={`${td.memberName} license back`} className="max-w-full rounded-lg border border-border" />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Image unavailable.</p>
+                  )}
+                </div>
+              </div>
+
+              <DeliveryProfileActions
+                deliveryProfileId={td.id}
+                status={td.status}
+                apiBase="/api/admin/team-drivers"
+                pendingStatus="pending_review"
+              />
+            </div>
+          ))}
         </div>
       )}
     </main>

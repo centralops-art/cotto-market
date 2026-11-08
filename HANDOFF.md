@@ -3218,3 +3218,80 @@ this project needs these 5 vars kept in sync in EAS's Environment
 Variables if their values ever change (e.g. rotating the Sentry DSN or
 switching the Stripe key to live mode) -- they will *not* pick up
 changes to the local `apps/mobile/.env` file automatically.
+
+---
+
+## 28. Family / team-member drivers (2026-11-08, built on branch `feat/team-member-delivery`, migration applied to hosted + smoke-tested)
+
+Founder requirement: home cooks must be able to have trusted family
+members (listed as storefront team members, no Cotto profile of their
+own) claim and deliver their orders. The intended mechanism, confirmed
+with the founder, stays **one shared vendor login** -- family members
+sign in to the cook's account. This feature closes the gaps that
+creates: no license on file for the person actually driving, no record
+of who drove, and the customer seeing the cook's name.
+
+Decisions (founder chose "picker + family licenses"; the three defaults
+below were proposed and not objected to):
+1. A family driver can deliver **any** order the storefront's account
+   claims, not only the storefront's own orders.
+2. The picker **defaults to the account owner**; solo cooks see no change
+   (the picker only appears once at least one family driver is approved).
+3. A vendor claiming **their own** order skips the region's `hard_block`
+   kitchen-conflict rule (server-side in `claim_delivery`, and the client
+   skips the soft-warning dialog for own orders).
+
+**What shipped (code only):**
+- Migration `0060_team_member_drivers.sql`: `vendor_team_drivers` table
+  (private; license front/back in the existing `drivers-licenses` bucket
+  under `{owner_profile_id}/team/{member_id}/`, expiry, vehicle,
+  insurance + agreement timestamps, `team_driver_status` enum), guard
+  trigger (vendor_id derived from the team member; any non-admin write
+  lands as `pending_review`), owner/admin RLS; `delivery_claims` gains
+  `driver_team_member_id` + `driver_display_name` (snapshot);
+  `claim_delivery` dropped and recreated with an optional
+  `delivering_member_id` (one-arg calls from older builds still work);
+  new `set_delivery_driver` RPC (change driver until pickup);
+  `suborder_driver_display_name` prefers the snapshot.
+- `cron-driver-license-expiry-check`: also suspends expired family
+  drivers and includes them in the 60-day admin digest.
+- Mobile: storefront Team section shows each member's driver status and
+  links to a new 4-step setup screen (`vendor/team-driver/[memberId]`,
+  reusing the onboarding steps); Deliveries tab gets a "Who's
+  delivering?" picker (remembered per phone in AsyncStorage) and marks
+  "(your order)"; delivery detail shows "Delivering: X" with a change
+  control before pickup.
+- Admin: "Family drivers" review panel on the vendor page (license
+  images, approve / reject-with-reason, emails the vendor), "family
+  driver to review" marker on the vendors list, driver line on order
+  detail. New routes `api/admin/team-drivers/[id]/approve|reject`.
+- `packages/shared/src/types/database.ts` regenerated from hosted after
+  the push (matched the interim hand edits apart from field order).
+
+**Applied 2026-11-08:** migration 0060 pushed to hosted (`db push
+--linked`), types regenerated, `cron-driver-license-expiry-check`
+redeployed. `pnpm typecheck` / `lint` / `test` pass.
+
+**Verified server-side (27 checks, throwaway fixtures: 3 auth users, a
+hidden `is_active=false` test region, 2 vendors, orders/suborders, one
+storage object -- all deleted after, leftover count 0):** owner insert or
+update can only land as `pending_review`; can't attach a record to
+another storefront's team member; other vendors / customers / anon can't
+read records; `approved_team_driver_name()` not callable from the app;
+license image upload under `{owner}/team/{member}/` works and is
+unreadable by another vendor; claim with a pending member refused (order
+stays `ready`); claim with an approved member records id + name + audit
+metadata; customer sees the member's name, then the owner's after
+switching back; can't switch to an unapproved member, another
+storefront's member, or as a vendor without the claim; can't switch after
+`picked_up`; one-argument `claim_delivery` (older builds) still works;
+`hard_block` region lets a busy cook's family claim the cook's OWN order
+but still blocks other vendors' orders; an expired license can't be
+picked even before the cron suspends it; editing an approved record
+resubmits it; deleting the team member cascades their driver record while
+past claims keep the snapshot name.
+
+**Not verified:** the cron's new family-driver branch was deployed but not
+invoked (invoking it does the real daily run against live data); no
+device test of the new mobile screens or admin panel yet; the mobile UI
+needs a new TestFlight / Play build to reach testers.

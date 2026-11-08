@@ -2,16 +2,34 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { teamMemberSchema, type Database, type TeamMemberInput } from "@cotto/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, Text, TextInput, View } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { uploadVendorImage } from "../../lib/upload-image";
+import { useTeamDriverRecords, type TeamDriver } from "../../lib/use-team-drivers";
 
 type TeamMember = Database["public"]["Tables"]["vendor_team_members"]["Row"];
 
+const DRIVER_STATUS_LABELS: Record<TeamDriver["status"], string> = {
+  pending_review: "Driver: waiting for Cotto review",
+  active: "Driver: approved",
+  rejected: "Driver: changes needed",
+  suspended: "Driver: suspended",
+};
+
+function driverStatusText(record: TeamDriver | undefined): string | null {
+  if (!record) return null;
+  if (record.status === "active" && record.drivers_license_expires_on < new Date().toISOString().slice(0, 10)) {
+    return "Driver: license expired";
+  }
+  return DRIVER_STATUS_LABELS[record.status];
+}
+
 export function TeamMembersSection({ vendorId }: { vendorId: string }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
@@ -37,8 +55,28 @@ export function TeamMembersSection({ vendorId }: { vendorId: string }) {
     },
   });
 
+  // Family drivers (migration 0060) only make sense once the storefront
+  // itself has applied to deliver -- they deliver under its approval.
+  const deliveryProfileQuery = useQuery({
+    queryKey: ["delivery_profile_status_for_team", vendorId],
+    queryFn: async () => {
+      const { data, error: fetchError } = await supabase
+        .from("vendor_delivery_profiles")
+        .select("status")
+        .eq("vendor_id", vendorId)
+        .maybeSingle();
+      if (fetchError) throw fetchError;
+      return data;
+    },
+  });
+  const canHaveFamilyDrivers = !!deliveryProfileQuery.data && deliveryProfileQuery.data.status !== "not_started";
+  const driversQuery = useTeamDriverRecords(vendorId);
+  const driverByMember = new Map((driversQuery.data ?? []).map((d) => [d.team_member_id, d]));
+
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["vendor_team_members", vendorId] });
+    await queryClient.invalidateQueries({ queryKey: ["vendor_team_drivers", vendorId] });
+    await queryClient.invalidateQueries({ queryKey: ["approved_team_drivers", vendorId] });
   }
 
   async function onAdd(values: TeamMemberInput) {
@@ -60,9 +98,24 @@ export function TeamMembersSection({ vendorId }: { vendorId: string }) {
     }
   }
 
-  async function onDelete(id: string) {
+  async function deleteMember(id: string) {
     await supabase.from("vendor_team_members").delete().eq("id", id);
     await refresh();
+  }
+
+  function onDelete(member: TeamMember) {
+    if (!driverByMember.has(member.id)) {
+      deleteMember(member.id);
+      return;
+    }
+    Alert.alert(
+      `Remove ${member.display_name}?`,
+      `This also removes ${member.display_name}'s driver approval. Past deliveries keep their name.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => deleteMember(member.id) },
+      ]
+    );
   }
 
   async function onUploadPhoto(member: TeamMember) {
@@ -90,11 +143,26 @@ export function TeamMembersSection({ vendorId }: { vendorId: string }) {
           <View className="flex-1">
             <Text className="font-semibold text-white">{member.display_name}</Text>
             {member.role_title && <Text className="text-sm text-white/60">{member.role_title}</Text>}
+            {canHaveFamilyDrivers && (
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: "/(app)/vendor/team-driver/[memberId]", params: { memberId: member.id } })
+                }
+              >
+                <Text className="text-sm text-cotto-accent">
+                  {driverStatusText(driverByMember.get(member.id)) ?? "Set up as a family driver"}
+                  {driverByMember.has(member.id) ? " · Update" : ""}
+                </Text>
+              </Pressable>
+            )}
+            {driverByMember.get(member.id)?.rejected_reason && (
+              <Text className="text-xs text-red-400">{driverByMember.get(member.id)?.rejected_reason}</Text>
+            )}
           </View>
           <Pressable onPress={() => onUploadPhoto(member)}>
             <Text className="text-cotto-accent">Photo</Text>
           </Pressable>
-          <Pressable onPress={() => onDelete(member.id)}>
+          <Pressable onPress={() => onDelete(member)}>
             <Text className="text-red-400">Remove</Text>
           </Pressable>
         </View>
