@@ -132,6 +132,12 @@ export function TeamMembersSection({ vendorId }: { vendorId: string }) {
   return (
     <View className="gap-3 border-b border-white/10 pb-6">
       <Text className="text-lg font-bold text-white">Team</Text>
+      {deliveryProfileQuery.isSuccess && !canHaveFamilyDrivers && (membersQuery.data?.length ?? 0) > 0 && (
+        <Text className="text-sm text-white/60">
+          Want family members to deliver your orders? Apply to deliver first (Account → Become a Delivery Partner). Once you
+          have, each team member here gets a &quot;Set up as a family driver&quot; option.
+        </Text>
+      )}
 
       {membersQuery.data?.map((member) => (
         <View key={member.id} className="flex-row items-center gap-3 rounded-lg bg-white/5 p-3">
