@@ -3171,3 +3171,50 @@ Not yet done: actual store-listing screenshots (founder's own
 discretion, said they'd do this on-device per §24), and the full
 public-release submission (this was internal/beta tracks only, per
 explicit founder choice).
+
+### One more bug found during the founder's own gate test: app crashed instantly on launch
+
+After the first successful submission above, the founder installed the
+Android build from Play's internal track and the app wouldn't open at
+all -- installed fine, icon present, but tapping it (from Play Store's
+"Open" button or the home screen icon) did nothing.
+
+**Root cause:** the repo's root `.gitignore` has a blanket `.env*`
+rule, so `apps/mobile/.env` was never committed to git at all -- it
+only ever existed on the founder's own machine. Every EAS cloud build
+(including every one of the builds in the section above) archived the
+project from git and genuinely never had `EXPO_PUBLIC_SUPABASE_URL`,
+`EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_MAPBOX_TOKEN`,
+`EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`, or `EXPO_PUBLIC_SENTRY_DSN` --
+all `undefined` at runtime, crashing the app immediately (Supabase's
+`createClient` throws synchronously on a missing URL). This never
+surfaced before because every prior "development"/"preview" build
+used `developmentClient: true`, connecting to a local Metro bundler on
+the founder's own machine (which *does* read the local `.env`) rather
+than shipping a frozen bundle -- this was the first standalone
+"production"-profile build ever built in this project.
+
+**Fix:** registered all 5 values directly in EAS's own project-level
+Environment Variables (`eas env:set production --name ... --value ...
+--visibility plaintext`) -- the warning every single build in this
+section printed ("No environment variables... found for the
+'production' environment on EAS") was flagging exactly this gap the
+whole time. All 5 values are safe to store as plaintext (Supabase anon
+key is RLS-protected, Stripe key is a test publishable key, Mapbox
+token and Sentry DSN are both meant to be public). Nothing to commit
+to git for this fix -- it lives entirely in EAS's own dashboard/CLI
+config, verified present via `eas env:list production`.
+
+Rebuilt and resubmitted both platforms with the fix confirmed in the
+build logs ("Environment variables with visibility ... loaded from
+the 'production' environment on EAS: EXPO_PUBLIC_MAPBOX_TOKEN, ..."),
+before the founder could test the iOS build and hit the identical
+crash there too. Both now live: Android version code 4 (Play internal
+track), iOS processing for TestFlight.
+
+**For next time:** any future standalone build (`eas build --profile
+production`, or any profile without `developmentClient: true`) in
+this project needs these 5 vars kept in sync in EAS's Environment
+Variables if their values ever change (e.g. rotating the Sentry DSN or
+switching the Stripe key to live mode) -- they will *not* pick up
+changes to the local `apps/mobile/.env` file automatically.
