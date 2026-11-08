@@ -1,7 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Tabs } from "expo-router";
+import type { BottomTabBarButtonProps } from "expo-router/build/react-navigation/bottom-tabs";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
+import { AwningTabButton } from "../../../src/components/awning-tab-button";
+
+/** Fixed per-screen so hiding a tab can't shift another tab's color at
+ * runtime -- see awning-tab-button.tsx. */
+function awningButton(cupColor: "red" | "cream", label: string, visible = true) {
+  return (props: BottomTabBarButtonProps) => <AwningTabButton {...props} cupColor={cupColor} label={label} visible={visible} />;
+}
 
 export default function TabsLayout() {
   const { session } = useAuth();
@@ -47,18 +55,19 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#D96A3E",
-        tabBarInactiveTintColor: "#9CA3AF",
-        tabBarStyle: { backgroundColor: "#171412", borderTopColor: "#2A2622" },
+        tabBarStyle: { backgroundColor: "#5C3317", borderTopWidth: 0 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Browse" }} />
-      <Tabs.Screen name="orders" options={{ title: "Orders" }} />
-      <Tabs.Screen name="favorites" options={{ title: "Favorites" }} />
-      <Tabs.Screen name="cart" options={{ title: "Cart" }} />
-      <Tabs.Screen name="kitchen" options={{ title: "Kitchen", href: showKitchenTab ? undefined : null }} />
-      <Tabs.Screen name="deliveries" options={{ title: "Deliveries", href: showDeliveriesTab ? undefined : null }} />
-      <Tabs.Screen name="account" options={{ title: "Account" }} />
+      <Tabs.Screen name="index" options={{ title: "Browse", tabBarButton: awningButton("red", "Browse") }} />
+      <Tabs.Screen name="orders" options={{ title: "Orders", tabBarButton: awningButton("cream", "Orders") }} />
+      <Tabs.Screen name="favorites" options={{ title: "Favorites", tabBarButton: awningButton("red", "Favorites") }} />
+      <Tabs.Screen name="cart" options={{ title: "Cart", tabBarButton: awningButton("cream", "Cart") }} />
+      <Tabs.Screen name="kitchen" options={{ title: "Kitchen", tabBarButton: awningButton("red", "Kitchen", showKitchenTab) }} />
+      <Tabs.Screen
+        name="deliveries"
+        options={{ title: "Deliveries", tabBarButton: awningButton("cream", "Deliveries", showDeliveriesTab) }}
+      />
+      <Tabs.Screen name="account" options={{ title: "Account", tabBarButton: awningButton("red", "Account") }} />
     </Tabs>
   );
 }
