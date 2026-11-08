@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { VendorActions } from "./vendor-actions";
 import { DeliveryProfileActions } from "./delivery-profile-actions";
 import { FeeSettings } from "./fee-settings";
+import { AvailabilityList } from "./availability-list";
 
 export default async function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
@@ -152,10 +153,8 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
                 : "Not yet"}
             </dd>
             <dt className="text-muted-foreground">Availability</dt>
-            <dd className="whitespace-pre-wrap font-mono text-xs">
-              {deliveryProfile.availability && Object.keys(deliveryProfile.availability).length > 0
-                ? JSON.stringify(deliveryProfile.availability, null, 2)
-                : "--"}
+            <dd>
+              <AvailabilityList availability={deliveryProfile.availability} />
             </dd>
           </dl>
 
