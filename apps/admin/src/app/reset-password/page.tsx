@@ -39,18 +39,69 @@ export default function ResetPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
+  // A handful of accounts (currently just admins) have a verified MFA
+  // factor. Supabase's recovery link only ever grants an AAL1 session, and
+  // the server refuses to let AAL1 update the password/email on such an
+  // account ("AAL2 session is required..."). Step the session up to AAL2
+  // with the existing factor before showing the password form.
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaChallengeId, setMfaChallengeId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+
   useEffect(() => {
     const tokens = parseRecoveryTokens(window.location.hash);
     if (!tokens) {
       setError("This reset link is invalid or has expired. Request a new one from the Cotto app.");
       return;
     }
-    supabase.auth.setSession(tokens).then(({ error: sessionError }) => {
-      if (sessionError) setError(sessionError.message);
-      else setSessionReady(true);
+    supabase.auth.setSession(tokens).then(async ({ error: sessionError }) => {
+      if (sessionError) {
+        setError(sessionError.message);
+        return;
+      }
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal && aal.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
+        const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+        const verified = factorsData?.totp.find((f) => f.status === "verified");
+        if (factorsError || !verified) {
+          setError(factorsError?.message ?? "This account has MFA enabled but no verified factor was found.");
+          return;
+        }
+        const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+          factorId: verified.id,
+        });
+        if (challengeError) {
+          setError(challengeError.message);
+          return;
+        }
+        setMfaFactorId(verified.id);
+        setMfaChallengeId(challengeData.id);
+      }
+      setSessionReady(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function onMfaSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mfaFactorId || !mfaChallengeId) return;
+    setMfaSubmitting(true);
+    setMfaError(null);
+    const { error: verifyError } = await supabase.auth.mfa.verify({
+      factorId: mfaFactorId,
+      challengeId: mfaChallengeId,
+      code: mfaCode,
+    });
+    setMfaSubmitting(false);
+    if (verifyError) {
+      setMfaError(verifyError.message);
+      return;
+    }
+    setMfaFactorId(null);
+    setMfaChallengeId(null);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,6 +139,33 @@ export default function ResetPasswordPage() {
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background p-8 text-center">
         <h1 className="text-2xl font-bold">Reset your password</h1>
         {error ? <p className="max-w-sm text-sm text-destructive">{error}</p> : <p className="text-muted-foreground">Opening your reset link...</p>}
+      </main>
+    );
+  }
+
+  if (mfaFactorId && mfaChallengeId) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-8">
+        <h1 className="text-2xl font-bold">Enter your authenticator code</h1>
+        <p className="max-w-sm text-center text-sm text-muted-foreground">
+          This account has an authenticator app set up. Enter the current 6-digit code to continue resetting your password.
+        </p>
+        <form onSubmit={onMfaSubmit} className="flex w-full max-w-sm flex-col gap-3">
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="6-digit code"
+            maxLength={6}
+            className="rounded-md border border-input bg-transparent px-3 py-2 text-center text-lg tracking-widest"
+            value={mfaCode}
+            onChange={(e) => setMfaCode(e.target.value)}
+          />
+          {mfaError && <p className="text-sm text-destructive">{mfaError}</p>}
+          <Button type="submit" disabled={mfaSubmitting || mfaCode.length !== 6}>
+            {mfaSubmitting ? "Verifying..." : "Verify"}
+          </Button>
+        </form>
       </main>
     );
   }
