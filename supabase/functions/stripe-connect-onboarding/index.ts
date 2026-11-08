@@ -1,8 +1,7 @@
 // Creates (or reuses) a Stripe Connect Express account for the calling
 // vendor and returns a fresh onboarding Account Link URL. Requires the
-// STRIPE_SECRET_KEY secret (`supabase secrets set STRIPE_SECRET_KEY=sk_test_...`).
-// TODO: blocked on the founder's Stripe Connect platform account approval --
-// this runs against a stubbed/incomplete Connect account until then.
+// STRIPE_SECRET_KEY secret (`supabase secrets set STRIPE_SECRET_KEY=sk_test_...`),
+// live since Phase 8's gate test.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -49,10 +48,10 @@ Deno.serve(async (req) => {
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) {
-      return new Response(
-        JSON.stringify({ error: "Stripe isn't configured yet -- ask the founder to set STRIPE_SECRET_KEY." }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Payout setup is temporarily unavailable. Please try again later." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
