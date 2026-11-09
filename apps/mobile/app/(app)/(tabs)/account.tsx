@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Alert, Text, View, Pressable, ActivityIndicator, ScrollView, Switch } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
+import { invokeFunction } from "../../../src/lib/invoke-function";
 import { useAuth } from "../../../src/lib/auth-context";
 
 function slugify(input: string) {
@@ -118,25 +119,20 @@ export default function Account() {
     onSuccess: refreshProfile,
   });
 
+  // scope "local": sign out of THIS phone only. The default ("global")
+  // cancels the account's sign-in on every device, which silently broke
+  // another phone signed in to the same account mid-checkout.
   async function signOut() {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   }
 
   const deleteAccount = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("delete-own-account");
-      if (error) {
-        // supabase-js's FunctionsHttpError.message is generic -- the real
-        // {error: "..."} body lives on error.context, unread by default
-        // (same gap fixed in order-tracking/[id].tsx's resolveOffer).
-        const context = (error as { context?: Response }).context;
-        const body = await context?.json().catch(() => null);
-        throw new Error(body?.error ?? error.message);
-      }
-      return data;
+      return invokeFunction("delete-own-account");
     },
     onSuccess: async () => {
-      await supabase.auth.signOut();
+      // The account is gone server-side; just clear this phone.
+      await supabase.auth.signOut({ scope: "local" });
     },
     onError: (err) => Alert.alert("Can't delete your account yet", (err as Error).message),
   });

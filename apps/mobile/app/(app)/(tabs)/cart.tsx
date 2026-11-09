@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
+import { invokeFunction } from "../../../src/lib/invoke-function";
 import { clearCart, useCartItems, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
@@ -188,12 +189,10 @@ export default function Cart() {
           };
         }
       }
-      const { data, error } = await supabase.functions.invoke("checkout-create-payment-intent", {
-        body: { cartId: cartQuery.data.id, fulfillments: payload },
+      return invokeFunction<{ clientSecret: string; orderId: string }>("checkout-create-payment-intent", {
+        cartId: cartQuery.data.id,
+        fulfillments: payload,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data as { clientSecret: string; orderId: string };
     },
     onSuccess: (data) => {
       router.push({ pathname: "/(app)/checkout", params: { clientSecret: data.clientSecret, orderId: data.orderId } });
