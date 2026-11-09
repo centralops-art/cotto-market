@@ -3374,3 +3374,35 @@ updates both test phones.
 as Three on both phones, managed the storefront on one and saw the changes
 on the other after a refresh; signing out on one phone left the other
 signed in with no errors. PR #39's per-device sign-out is confirmed.
+
+---
+
+## 30. Password reset page: "Auth session missing" fix (PR #40, 2026-11-09)
+
+**Bug (founder-reported):** using the admin "Send password reset email"
+button, then opening the link, gave "Auth session missing" on submit and
+the password did not change. Cause: `admin.cottomarket.com/reset-password`
+used `@/lib/supabase/client` (cookie-backed `@supabase/ssr` browser client),
+which shares cookies with the Cotto Admin dashboard on the same origin. With
+a dashboard session in the same browser, the recovery session and the
+dashboard session collided (recovery session wiped before submit; the page's
+sign-out also signed the admin out of the dashboard). In a clean browser the
+old page worked -- reproduced with a throwaway account.
+
+**Fix, squash-merged as `5e32cb2`, Vercel production deploy confirmed live:**
+the page now uses an in-memory supabase-js client (`persistSession: false`,
+no cross-tab broadcast), clears the tokens from the address bar, shows a
+clear "already used or expired" message (incl. Supabase's `otp_expired`
+redirect), and signs out globally only after a successful change.
+
+**Verified:** admin dev server on localhost against hosted Supabase, throwaway
+accounts (deleted): a stand-in dashboard cookie survived the reset untouched,
+the new password signs in, a reused link shows the new message. Production
+page confirmed serving the new code. Vercel preview deployments are behind
+Vercel login, so local dev (temporary git-ignored
+`apps/admin/.env.development.local` pointing at hosted, removed after) was
+the test path.
+
+**Rule for later:** any public page on the admin origin that handles a
+non-admin user's session must not use `@/lib/supabase/client`; use an
+isolated in-memory client like `reset-password/page.tsx` does.
