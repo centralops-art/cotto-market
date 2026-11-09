@@ -3295,3 +3295,28 @@ past claims keep the snapshot name.
 invoked (invoking it does the real daily run against live data); no
 device test of the new mobile screens or admin panel yet; the mobile UI
 needs a new TestFlight / Play build to reach testers.
+
+**Founder gate test, 2026-11-08 (passed, parts A, B, C, E; D skipped):**
+Run on Three's Kitchen (dev client) + Christopher Testing (Play build).
+Family driver setup, admin approval on the PR #38 Vercel preview, the
+"Who's delivering?" picker, own-order claim with no kitchen warning,
+switching driver before pickup, admin + customer-facing driver name, full
+delivery, and picker remembered after restart all passed. Verified after:
+the claim stored Lys Malone (id + snapshot), and the **$10.28 driver payout
+Transfer succeeded** for a self-delivered order -- closing §21's open
+"self-delivery payout not re-verified" item. Removing a team member
+(one with no driver record) worked; the "past claim keeps the name
+after removal" case is covered by the server smoke test only.
+
+Gate-test follow-ups, both pushed to this branch: a hint in the Team
+section when the storefront hasn't applied to deliver (the founder first
+tested on an account that hadn't), and admin availability shown as a
+readable weekly list instead of raw JSON.
+
+Separate bug found during the gate test, fixed in **PR #39**
+(`fix/sign-in-session`): `supabase.auth.signOut()` defaulted to global
+scope, so signing out on one phone cancelled the same account's session
+on the other; the app kept showing cached data and checkout failed with a
+generic 401 message. Note: the throwaway repro script used in diagnosing
+it also called a global signOut -- any future script that signs in as a
+real account must use `signOut({ scope: "local" })`.
