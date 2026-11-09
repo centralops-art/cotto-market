@@ -1,12 +1,14 @@
 import { calculateDeliverySplit, formatCents } from "@cotto/shared";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as Location from "expo-location";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, Switch, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { haversineMiles } from "../../../src/lib/geo";
+import { useApprovedTeamDrivers } from "../../../src/lib/use-team-drivers";
 
 type Coords = { lat: number; lng: number };
 type LocationStatus = "idle" | "requesting" | "granted" | "denied";
@@ -78,6 +80,46 @@ export default function Deliveries() {
     },
   });
   const profile = profileQuery.data;
+
+  // Who is delivering (migration 0060): the account owner (null) or an
+  // approved family/team-member driver. Remembered per phone, since a family
+  // member signed in on their own phone will pick themselves once and keep it.
+  const teamDriversQuery = useApprovedTeamDrivers(vendor?.id);
+  const teamDrivers = teamDriversQuery.data ?? [];
+  const [deliveringMemberId, setDeliveringMemberId] = useState<string | null>(null);
+  const deliveringStorageKey = vendor ? `cotto.deliveringMember.${vendor.id}` : null;
+
+  useEffect(() => {
+    if (!deliveringStorageKey) return;
+    AsyncStorage.getItem(deliveringStorageKey)
+      .then((stored) => setDeliveringMemberId(stored || null))
+      .catch(() => {});
+  }, [deliveringStorageKey]);
+
+  // A remembered member who has since been removed or suspended falls back
+  // to the owner rather than failing every claim.
+  const effectiveMemberId =
+    deliveringMemberId && teamDrivers.some((d) => d.teamMemberId === deliveringMemberId) ? deliveringMemberId : null;
+
+  function chooseDeliverer(memberId: string | null) {
+    setDeliveringMemberId(memberId);
+    if (deliveringStorageKey) {
+      (memberId ? AsyncStorage.setItem(deliveringStorageKey, memberId) : AsyncStorage.removeItem(deliveringStorageKey)).catch(
+        () => {}
+      );
+    }
+  }
+
+  const ownerNameQuery = useQuery({
+    queryKey: ["own_profile_name", session?.user.id],
+    enabled: !!session && teamDrivers.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("full_name").eq("id", session!.user.id).single();
+      if (error) throw error;
+      return data.full_name as string | null;
+    },
+  });
+  const ownerLabel = ownerNameQuery.data?.split(" ")[0] ?? "Me";
 
   const toggleOnDuty = useMutation({
     mutationFn: async (value: boolean) => {
@@ -157,7 +199,7 @@ export default function Deliveries() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vendor_suborders")
-        .select("id, delivery_fee_cents, delivery_lat, delivery_lng, ready_at, vendors(storefront_name, lat, lng)")
+        .select("id, vendor_id, delivery_fee_cents, delivery_lat, delivery_lng, ready_at, vendors(storefront_name, lat, lng)")
         .eq("fulfillment", "delivery")
         .eq("status", "ready");
       if (error) throw error;
@@ -188,7 +230,7 @@ export default function Deliveries() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vendor_suborders")
-        .select("id, status, vendors(storefront_name), delivery_claims!inner(id, claimed_at)")
+        .select("id, status, vendors(storefront_name), delivery_claims!inner(id, claimed_at, driver_display_name)")
         .eq("delivery_claims.driver_vendor_id", vendor!.id)
         .is("delivery_claims.released_at", null)
         .in("status", ["claimed", "en_route_to_pickup", "picked_up", "en_route_to_customer"])
@@ -218,7 +260,12 @@ export default function Deliveries() {
 
   const claim = useMutation({
     mutationFn: async (suborderId: string) => {
-      const { data, error } = await supabase.rpc("claim_delivery", { so_id: suborderId });
+      // Only send delivering_member_id when a family member is picked, so a
+      // plain owner claim is the exact same call older builds make.
+      const { data, error } = await supabase.rpc(
+        "claim_delivery",
+        effectiveMemberId ? { so_id: suborderId, delivering_member_id: effectiveMemberId } : { so_id: suborderId }
+      );
       if (error) throw error;
       return data;
     },
@@ -234,9 +281,12 @@ export default function Deliveries() {
     onError: (err) => Alert.alert("Couldn't claim this order", (err as Error).message),
   });
 
-  function confirmAndClaim(suborderId: string) {
+  function confirmAndClaim(suborderId: string, isOwnOrder: boolean) {
     const openCount = openKitchenOrdersQuery.data ?? 0;
-    if (openCount === 0) {
+    // Delivering your own order (often a family member while the cook keeps
+    // cooking) is exempt from the kitchen-conflict rule -- claim_delivery
+    // skips it server-side too (migration 0060).
+    if (openCount === 0 || isOwnOrder) {
       claim.mutate(suborderId);
       return;
     }
@@ -277,6 +327,7 @@ export default function Deliveries() {
       const { driverPayoutCents } = calculateDeliverySplit(row.delivery_fee_cents, splitPct);
       return {
         id: row.id,
+        isOwnOrder: row.vendor_id === vendor?.id,
         vendorName: pickupVendor?.storefront_name ?? "Unknown vendor",
         distanceToPickup,
         distancePickupToDropoff,
@@ -314,6 +365,27 @@ export default function Deliveries() {
         />
       </View>
 
+      {teamDrivers.length > 0 && (
+        <View className="gap-2 rounded-lg bg-white/5 p-4">
+          <Text className="font-semibold text-white">Who's delivering?</Text>
+          <Text className="text-sm text-white/60">New claims from this phone are delivered by:</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {[{ teamMemberId: null as string | null, displayName: ownerLabel }, ...teamDrivers].map((d) => {
+              const selected = effectiveMemberId === d.teamMemberId;
+              return (
+                <Pressable
+                  key={d.teamMemberId ?? "owner"}
+                  className={`rounded-full border px-3 py-1.5 ${selected ? "border-cotto-accent bg-cotto-accent/20" : "border-white/20"}`}
+                  onPress={() => chooseDeliverer(d.teamMemberId)}
+                >
+                  <Text className={selected ? "text-cotto-accent" : "text-white/70"}>{d.displayName}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       <View className="flex-row gap-2">
         {(["available", "queue", "history"] as Tab[]).map((t) => (
           <Pressable
@@ -349,7 +421,10 @@ export default function Deliveries() {
           cards.map((card) => (
             <View key={card.id} className="gap-2 rounded-lg bg-white/5 p-4">
               <View className="flex-row items-center justify-between">
-                <Text className="font-semibold text-white">{card.vendorName}</Text>
+                <Text className="font-semibold text-white">
+                  {card.vendorName}
+                  {card.isOwnOrder ? " (your order)" : ""}
+                </Text>
                 <Text className="font-semibold text-cotto-accent">Est. {formatCents(card.payoutCents)}</Text>
               </View>
               <Text className="text-sm text-white/60">
@@ -361,7 +436,7 @@ export default function Deliveries() {
               <Pressable
                 className="mt-1 items-center rounded-lg bg-cotto-accent py-2 disabled:opacity-50"
                 disabled={claim.isPending}
-                onPress={() => confirmAndClaim(card.id)}
+                onPress={() => confirmAndClaim(card.id, card.isOwnOrder)}
               >
                 {claim.isPending ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Claim</Text>}
               </Pressable>
@@ -377,6 +452,7 @@ export default function Deliveries() {
         ) : (
           queueQuery.data.map((so) => {
             const vendorInfo = so.vendors as unknown as { storefront_name: string } | null;
+            const activeClaim = ((so.delivery_claims ?? []) as unknown as { driver_display_name: string | null }[])[0];
             return (
               <Pressable
                 key={so.id}
@@ -384,7 +460,10 @@ export default function Deliveries() {
                 onPress={() => router.push({ pathname: "/(app)/deliveries/[id]", params: { id: so.id } })}
               >
                 <Text className="font-semibold text-white">{vendorInfo?.storefront_name ?? "Unknown vendor"}</Text>
-                <Text className="text-sm text-white/60">{QUEUE_STATUS_LABELS[so.status] ?? so.status}</Text>
+                <Text className="text-sm text-white/60">
+                  {QUEUE_STATUS_LABELS[so.status] ?? so.status}
+                  {activeClaim?.driver_display_name ? ` · ${activeClaim.driver_display_name} delivering` : ""}
+                </Text>
               </Pressable>
             );
           })

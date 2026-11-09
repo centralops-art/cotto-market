@@ -16,6 +16,7 @@ const STATUS_STYLES: Record<string, string> = {
   delivery_pending_review: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400",
   delivery_active: "bg-green-500/15 text-green-600 dark:text-green-400",
   delivery_suspended: "bg-destructive/15 text-destructive",
+  rejected: "bg-destructive/15 text-destructive",
 };
 
 export function StatusBadge({ status }: { status: string }) {

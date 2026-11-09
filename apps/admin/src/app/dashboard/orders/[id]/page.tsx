@@ -16,7 +16,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   const { data: suborders } = await admin.service
     .from("vendor_suborders")
-    .select("*, vendors(storefront_name), order_items(*)")
+    .select("*, vendors(storefront_name), order_items(*), delivery_claims(released_at, driver_display_name, vendors(storefront_name))")
     .eq("order_id", id)
     .order("created_at");
 
@@ -62,6 +62,26 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 ? `Pickup at ${suborder.pickup_at ? new Date(suborder.pickup_at).toLocaleString() : "--"}`
                 : `Delivery to ${(suborder.delivery_address as { line1?: string })?.line1 ?? "--"}`}
             </p>
+            {(() => {
+              // Active (or completed -- never released) claim. A family
+              // driver (migration 0060) shows by name; otherwise the
+              // claiming storefront's owner delivered.
+              const claim = (
+                suborder.delivery_claims as unknown as {
+                  released_at: string | null;
+                  driver_display_name: string | null;
+                  vendors: { storefront_name: string } | null;
+                }[]
+              )?.find((c) => !c.released_at);
+              if (!claim) return null;
+              const storefront = claim.vendors?.storefront_name ?? "a vendor";
+              return (
+                <p className="text-sm text-muted-foreground">
+                  Driver:{" "}
+                  {claim.driver_display_name ? `${claim.driver_display_name} (family driver for ${storefront})` : `owner of ${storefront}`}
+                </p>
+              );
+            })()}
             <ul className="mt-2 text-sm">
               {(suborder.order_items as { name_snapshot: string; quantity: number; unit_price_cents: number }[])?.map(
                 (item, i) => (

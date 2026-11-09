@@ -8,6 +8,11 @@ import { supabase } from "../../lib/supabase";
 
 interface Props {
   userId: string;
+  // Folder under {userId}/ to store the images in -- used for family/team
+  // drivers ("team/{memberId}"). The first path segment must stay the
+  // signed-in user's id: drivers-licenses' storage policies (0032) key on it.
+  subfolder?: string;
+  heading?: string;
   defaultFrontUrl: string | null;
   defaultBackUrl: string | null;
   defaultExpiresOn: string | null;
@@ -16,7 +21,7 @@ interface Props {
 
 type Side = "front" | "back";
 
-export function LicenseStep({ userId, defaultFrontUrl, defaultBackUrl, defaultExpiresOn, onNext }: Props) {
+export function LicenseStep({ userId, subfolder, heading, defaultFrontUrl, defaultBackUrl, defaultExpiresOn, onNext }: Props) {
   const [frontPath, setFrontPath] = useState<string | null>(defaultFrontUrl);
   const [backPath, setBackPath] = useState<string | null>(defaultBackUrl);
   const [frontPreviewUri, setFrontPreviewUri] = useState<string | null>(null);
@@ -48,7 +53,8 @@ export function LicenseStep({ userId, defaultFrontUrl, defaultBackUrl, defaultEx
       const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: "base64" });
       const arrayBuffer = decode(base64);
       const ext = asset.uri.split(".").pop() ?? "jpg";
-      const path = `${userId}/license-${side}-${Date.now()}.${ext}`;
+      const folder = subfolder ? `${userId}/${subfolder}` : userId;
+      const path = `${folder}/license-${side}-${Date.now()}.${ext}`;
       const { error } = await supabase.storage
         .from("drivers-licenses")
         .upload(path, arrayBuffer, { contentType: asset.mimeType ?? "image/jpeg", upsert: true });
@@ -94,7 +100,7 @@ export function LicenseStep({ userId, defaultFrontUrl, defaultBackUrl, defaultEx
 
   return (
     <View className="gap-4">
-      <Text className="text-2xl font-bold text-white">Upload your driver's license</Text>
+      <Text className="text-2xl font-bold text-white">{heading ?? "Upload your driver's license"}</Text>
       <Text className="text-white/70">Only visible to Central Ops, used to review your delivery partner application.</Text>
 
       <View className="gap-2">
