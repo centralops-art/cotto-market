@@ -3368,6 +3368,9 @@ reads both store keys from those local paths).
 submitted 6:25 PM, Android 6:33 PM, Nov 8). Android vc 5 is on the Play
 internal track; iOS 1.0.0 (7) is processing in App Store Connect for
 TestFlight. Not yet done: founder adds testers to the TestFlight group,
-updates both test phones, and device-checks the PR #39 sign-in behavior
-(sign out on one phone no longer signs the other out; a cancelled session
-now lands on the sign-in screen with "You've been signed out").
+updates both test phones.
+
+**Device-verified by the founder (2026-11-09) on the new builds:** signed in
+as Three on both phones, managed the storefront on one and saw the changes
+on the other after a refresh; signing out on one phone left the other
+signed in with no errors. PR #39's per-device sign-out is confirmed.
