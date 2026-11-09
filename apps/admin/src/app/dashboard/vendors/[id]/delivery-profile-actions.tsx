@@ -4,19 +4,31 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-export function DeliveryProfileActions({ deliveryProfileId, status }: { deliveryProfileId: string; status: string }) {
+// Also used for family/team-member drivers (migration 0060) via apiBase +
+// pendingStatus -- same approve / reject-with-reason flow, different table.
+export function DeliveryProfileActions({
+  deliveryProfileId,
+  status,
+  apiBase = "/api/admin/vendor-delivery-profiles",
+  pendingStatus = "delivery_pending_review",
+}: {
+  deliveryProfileId: string;
+  status: string;
+  apiBase?: string;
+  pendingStatus?: string;
+}) {
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (status !== "delivery_pending_review") return null;
+  if (status !== pendingStatus) return null;
 
   async function approve() {
     setLoading(true);
     setError(null);
-    const res = await fetch(`/api/admin/vendor-delivery-profiles/${deliveryProfileId}/approve`, { method: "POST" });
+    const res = await fetch(`${apiBase}/${deliveryProfileId}/approve`, { method: "POST" });
     const result = await res.json();
     setLoading(false);
     if (result.error) return setError(result.error);
@@ -27,7 +39,7 @@ export function DeliveryProfileActions({ deliveryProfileId, status }: { delivery
     if (!reason.trim()) return setError("A reason is required");
     setLoading(true);
     setError(null);
-    const res = await fetch(`/api/admin/vendor-delivery-profiles/${deliveryProfileId}/reject`, {
+    const res = await fetch(`${apiBase}/${deliveryProfileId}/reject`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),

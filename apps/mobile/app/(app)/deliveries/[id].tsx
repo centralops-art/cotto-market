@@ -5,6 +5,8 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } 
 import { supabase } from "../../../src/lib/supabase";
 import { invokeFunction } from "../../../src/lib/invoke-function";
 import { MessageThread } from "../../../src/components/message-thread";
+import { useApprovedTeamDrivers } from "../../../src/lib/use-team-drivers";
+import { useAuth } from "../../../src/lib/auth-context";
 
 const NEXT_ACTION: Record<string, { newStatus: string; label: string } | undefined> = {
   claimed: { newStatus: "en_route_to_pickup", label: "Heading to pickup" },
@@ -27,6 +29,7 @@ export default function DeliveryClaimDetail() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const { session } = useAuth();
 
   const suborderQuery = useQuery({
     queryKey: ["delivery_claim_detail", id],
@@ -51,6 +54,51 @@ export default function DeliveryClaimDetail() {
       if (error) throw error;
       return data as string | null;
     },
+  });
+
+  // The active claim -- who is delivering (migration 0060).
+  const claimQuery = useQuery({
+    queryKey: ["delivery_claim_driver", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("delivery_claims")
+        .select("id, driver_vendor_id, driver_team_member_id, driver_display_name")
+        .eq("vendor_suborder_id", id!)
+        .is("released_at", null)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const teamDriversQuery = useApprovedTeamDrivers(claimQuery.data?.driver_vendor_id);
+  const teamDrivers = teamDriversQuery.data ?? [];
+
+  const ownerNameQuery = useQuery({
+    queryKey: ["own_profile_name", session?.user.id],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("full_name").eq("id", session!.user.id).single();
+      if (error) throw error;
+      return data.full_name as string | null;
+    },
+  });
+  const ownerLabel = ownerNameQuery.data?.split(" ")[0] ?? "Me";
+
+  const setDriver = useMutation({
+    mutationFn: async (memberId: string | null) => {
+      const { error } = await supabase.rpc(
+        "set_delivery_driver",
+        memberId ? { so_id: id!, delivering_member_id: memberId } : { so_id: id! }
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["delivery_claim_driver", id] });
+      queryClient.invalidateQueries({ queryKey: ["delivery_claims_queue"] });
+    },
+    onError: (err) => setError((err as Error).message),
   });
 
   const transition = useMutation({
@@ -120,6 +168,32 @@ export default function DeliveryClaimDetail() {
       <Text className="text-white/60">
         ETA: {suborder.mapbox_eta_minutes != null ? `${suborder.mapbox_eta_minutes} min` : "Calculating..."}
       </Text>
+
+      {claimQuery.data && (
+        <View className="gap-2 rounded-lg bg-white/5 p-4">
+          <Text className="font-semibold text-white">Delivering: {claimQuery.data.driver_display_name ?? ownerLabel}</Text>
+          {canRelease && teamDrivers.length > 0 && (
+            <View className="flex-row flex-wrap gap-2">
+              {[{ teamMemberId: null as string | null, displayName: ownerLabel }, ...teamDrivers].map((d) => {
+                const selected = (claimQuery.data?.driver_team_member_id ?? null) === d.teamMemberId;
+                return (
+                  <Pressable
+                    key={d.teamMemberId ?? "owner"}
+                    disabled={selected || setDriver.isPending}
+                    className={`rounded-full border px-3 py-1.5 ${selected ? "border-cotto-accent bg-cotto-accent/20" : "border-white/20"}`}
+                    onPress={() => setDriver.mutate(d.teamMemberId)}
+                  >
+                    <Text className={selected ? "text-cotto-accent" : "text-white/70"}>{d.displayName}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {canRelease && teamDrivers.length > 0 && (
+            <Text className="text-xs text-white/40">You can change who's delivering until the order is picked up.</Text>
+          )}
+        </View>
+      )}
 
       {suborder.delivery_address && (
         <Text className="text-white/60">

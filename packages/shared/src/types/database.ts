@@ -178,7 +178,9 @@ export type Database = {
           customer_rating: number | null
           customer_rating_comment: string | null
           delivered_at: string | null
+          driver_display_name: string | null
           driver_payout_cents: number
+          driver_team_member_id: string | null
           driver_vendor_id: string
           en_route_to_customer_at: string | null
           en_route_to_pickup_at: string | null
@@ -198,7 +200,9 @@ export type Database = {
           customer_rating?: number | null
           customer_rating_comment?: string | null
           delivered_at?: string | null
+          driver_display_name?: string | null
           driver_payout_cents: number
+          driver_team_member_id?: string | null
           driver_vendor_id: string
           en_route_to_customer_at?: string | null
           en_route_to_pickup_at?: string | null
@@ -218,7 +222,9 @@ export type Database = {
           customer_rating?: number | null
           customer_rating_comment?: string | null
           delivered_at?: string | null
+          driver_display_name?: string | null
           driver_payout_cents?: number
+          driver_team_member_id?: string | null
           driver_vendor_id?: string
           en_route_to_customer_at?: string | null
           en_route_to_pickup_at?: string | null
@@ -232,6 +238,13 @@ export type Database = {
           vendor_suborder_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "delivery_claims_driver_team_member_id_fkey"
+            columns: ["driver_team_member_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_team_members"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "delivery_claims_driver_vendor_id_fkey"
             columns: ["driver_vendor_id"]
@@ -1032,6 +1045,75 @@ export type Database = {
           },
         ]
       }
+      vendor_team_drivers: {
+        Row: {
+          created_at: string
+          delivery_agreement_accepted_at: string
+          drivers_license_back_url: string
+          drivers_license_expires_on: string
+          drivers_license_expiry_warned_at: string | null
+          drivers_license_front_url: string
+          id: string
+          insurance_attested_at: string
+          rejected_reason: string | null
+          status: Database["public"]["Enums"]["team_driver_status"]
+          suspended_reason: string | null
+          team_member_id: string
+          updated_at: string
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+          vendor_id: string
+        }
+        Insert: {
+          created_at?: string
+          delivery_agreement_accepted_at: string
+          drivers_license_back_url: string
+          drivers_license_expires_on: string
+          drivers_license_expiry_warned_at?: string | null
+          drivers_license_front_url: string
+          id?: string
+          insurance_attested_at: string
+          rejected_reason?: string | null
+          status?: Database["public"]["Enums"]["team_driver_status"]
+          suspended_reason?: string | null
+          team_member_id: string
+          updated_at?: string
+          vehicle_type: Database["public"]["Enums"]["vehicle_type"]
+          vendor_id: string
+        }
+        Update: {
+          created_at?: string
+          delivery_agreement_accepted_at?: string
+          drivers_license_back_url?: string
+          drivers_license_expires_on?: string
+          drivers_license_expiry_warned_at?: string | null
+          drivers_license_front_url?: string
+          id?: string
+          insurance_attested_at?: string
+          rejected_reason?: string | null
+          status?: Database["public"]["Enums"]["team_driver_status"]
+          suspended_reason?: string | null
+          team_member_id?: string
+          updated_at?: string
+          vehicle_type?: Database["public"]["Enums"]["vehicle_type"]
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_team_drivers_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: true
+            referencedRelation: "vendor_team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_team_drivers_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_team_members: {
         Row: {
           bio: string | null
@@ -1268,9 +1350,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      approved_team_driver_name: {
+        Args: { p_team_member_id: string; p_vendor_id: string }
+        Returns: string
+      }
       can_view_pool_suborder: { Args: { so_id: string }; Returns: boolean }
       claim_delivery: {
-        Args: { so_id: string }
+        Args: { delivering_member_id?: string; so_id: string }
         Returns: {
           claimed_at: string
           cotto_delivery_fee_cents: number
@@ -1278,7 +1364,9 @@ export type Database = {
           customer_rating: number | null
           customer_rating_comment: string | null
           delivered_at: string | null
+          driver_display_name: string | null
           driver_payout_cents: number
+          driver_team_member_id: string | null
           driver_vendor_id: string
           en_route_to_customer_at: string | null
           en_route_to_pickup_at: string | null
@@ -1330,7 +1418,9 @@ export type Database = {
           customer_rating: number | null
           customer_rating_comment: string | null
           delivered_at: string | null
+          driver_display_name: string | null
           driver_payout_cents: number
+          driver_team_member_id: string | null
           driver_vendor_id: string
           en_route_to_customer_at: string | null
           en_route_to_pickup_at: string | null
@@ -1359,7 +1449,9 @@ export type Database = {
           customer_rating: number | null
           customer_rating_comment: string | null
           delivered_at: string | null
+          driver_display_name: string | null
           driver_payout_cents: number
+          driver_team_member_id: string | null
           driver_vendor_id: string
           en_route_to_customer_at: string | null
           en_route_to_pickup_at: string | null
@@ -1386,6 +1478,37 @@ export type Database = {
       review_customer_first_name: {
         Args: { review_id: string }
         Returns: string
+      }
+      set_delivery_driver: {
+        Args: { delivering_member_id?: string; so_id: string }
+        Returns: {
+          claimed_at: string
+          cotto_delivery_fee_cents: number
+          created_at: string
+          customer_rating: number | null
+          customer_rating_comment: string | null
+          delivered_at: string | null
+          driver_display_name: string | null
+          driver_payout_cents: number
+          driver_team_member_id: string | null
+          driver_vendor_id: string
+          en_route_to_customer_at: string | null
+          en_route_to_pickup_at: string | null
+          id: string
+          picked_up_at: string | null
+          release_reason: string | null
+          released_at: string | null
+          stripe_transfer_id: string | null
+          stuck_notified_at: string | null
+          updated_at: string
+          vendor_suborder_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "delivery_claims"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       suborder_customer_display_name: {
         Args: { so_id: string }
@@ -1439,6 +1562,7 @@ export type Database = {
         | "completed"
         | "cancelled"
         | "refunded"
+      team_driver_status: "pending_review" | "active" | "rejected" | "suspended"
       user_role:
         | "customer"
         | "vendor_owner"
@@ -1634,6 +1758,7 @@ export const Constants = {
         "cancelled",
         "refunded",
       ],
+      team_driver_status: ["pending_review", "active", "rejected", "suspended"],
       user_role: [
         "customer",
         "vendor_owner",

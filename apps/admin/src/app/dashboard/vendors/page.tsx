@@ -21,7 +21,7 @@ export default async function VendorsPage({
 
   let query = admin.service
     .from("vendors")
-    .select("id, storefront_name, status, created_at, vendor_types, vendor_delivery_profiles(status)")
+    .select("id, storefront_name, status, created_at, vendor_types, vendor_delivery_profiles(status), vendor_team_drivers(status)")
     .order("created_at", { ascending: false });
   if (activeTab !== "all") query = query.eq("status", activeTab);
   const { data: vendors } = await query;
@@ -64,6 +64,11 @@ export default async function VendorsPage({
                 <StatusBadge status={vendor.status} />
                 {vendor.vendor_delivery_profiles?.status && vendor.vendor_delivery_profiles.status !== "not_started" && (
                   <StatusBadge status={vendor.vendor_delivery_profiles.status} />
+                )}
+                {vendor.vendor_team_drivers?.some((d) => d.status === "pending_review") && (
+                  <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2.5 py-0.5 text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                    family driver to review
+                  </span>
                 )}
               </div>
             </Link>

@@ -38,6 +38,26 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 1b. Same for family/team-member drivers (migration 0060). Suspending
+    // one never affects the owner's own delivery profile or other members.
+    const { data: expiredTeam, error: expiredTeamError } = await service
+      .from("vendor_team_drivers")
+      .update({ status: "suspended", suspended_reason: "Driver's license expired" })
+      .lt("drivers_license_expires_on", today)
+      .eq("status", "active")
+      .select("id");
+    if (expiredTeamError) throw expiredTeamError;
+
+    for (const teamDriver of expiredTeam ?? []) {
+      await service.from("audit_log").insert({
+        actor_profile_id: null,
+        action: "team_driver_license_expired_auto_suspend",
+        target_table: "vendor_team_drivers",
+        target_id: teamDriver.id,
+        reason: "Driver's license expired",
+      });
+    }
+
     // 2. Warn admins about profiles entering the 60-day expiry window who
     // haven't been warned yet.
     const warningCutoff = new Date();
@@ -52,25 +72,41 @@ Deno.serve(async (req) => {
       .gte("drivers_license_expires_on", today);
     if (nearingError) throw nearingError;
 
+    const { data: nearingTeam, error: nearingTeamError } = await service
+      .from("vendor_team_drivers")
+      .select("id, drivers_license_expires_on, vendor_team_members(display_name), vendors(storefront_name)")
+      .eq("status", "active")
+      .is("drivers_license_expiry_warned_at", null)
+      .lte("drivers_license_expires_on", warningCutoff.toISOString().slice(0, 10))
+      .gte("drivers_license_expires_on", today);
+    if (nearingTeamError) throw nearingTeamError;
+
+    const warnLines = [
+      ...(nearingExpiry ?? []).map((p) => {
+        const vendorName = (p.vendors as unknown as { storefront_name: string } | null)?.storefront_name ?? p.vendor_id;
+        return `- ${vendorName}: expires ${p.drivers_license_expires_on}`;
+      }),
+      ...(nearingTeam ?? []).map((t) => {
+        const vendorName = (t.vendors as unknown as { storefront_name: string } | null)?.storefront_name ?? "Unknown storefront";
+        const memberName = (t.vendor_team_members as unknown as { display_name: string } | null)?.display_name ?? "team member";
+        return `- ${vendorName} (family driver ${memberName}): expires ${t.drivers_license_expires_on}`;
+      }),
+    ];
+
     let emailError: string | undefined;
-    if (nearingExpiry && nearingExpiry.length > 0) {
+    if (warnLines.length > 0) {
       const resendKey = Deno.env.get("RESEND_API_KEY");
       const { data: settings } = await service.from("system_settings").select("admin_allow_list").eq("id", 1).single();
 
       if (resendKey && settings?.admin_allow_list?.length) {
-        const lines = nearingExpiry
-          .map((p) => {
-            const vendorName = (p.vendors as unknown as { storefront_name: string } | null)?.storefront_name ?? p.vendor_id;
-            return `- ${vendorName}: expires ${p.drivers_license_expires_on}`;
-          })
-          .join("\n");
+        const lines = warnLines.join("\n");
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: "Cotto <notifications@cottomarket.com>",
             to: settings.admin_allow_list,
-            subject: `${nearingExpiry.length} driver's license(s) expiring within ${WARNING_WINDOW_DAYS} days`,
+            subject: `${warnLines.length} driver's license(s) expiring within ${WARNING_WINDOW_DAYS} days`,
             text: `The following delivery partners' licenses expire soon:\n\n${lines}\n\nReach out before they're auto-suspended on expiry.`,
           }),
         });
@@ -82,16 +118,25 @@ Deno.serve(async (req) => {
       // Mark warned regardless of email success -- avoids retry-storming
       // Resend on a persistent config issue; the next day's run still tries
       // any newly-eligible profiles, and audit_log keeps the suspend trail.
-      await service
-        .from("vendor_delivery_profiles")
-        .update({ drivers_license_expiry_warned_at: new Date().toISOString() })
-        .in("id", nearingExpiry.map((p) => p.id));
+      const warnedAt = new Date().toISOString();
+      if (nearingExpiry && nearingExpiry.length > 0) {
+        await service
+          .from("vendor_delivery_profiles")
+          .update({ drivers_license_expiry_warned_at: warnedAt })
+          .in("id", nearingExpiry.map((p) => p.id));
+      }
+      if (nearingTeam && nearingTeam.length > 0) {
+        await service
+          .from("vendor_team_drivers")
+          .update({ drivers_license_expiry_warned_at: warnedAt })
+          .in("id", nearingTeam.map((t) => t.id));
+      }
     }
 
     return new Response(
       JSON.stringify({
-        suspended: expired?.length ?? 0,
-        warned: nearingExpiry?.length ?? 0,
+        suspended: (expired?.length ?? 0) + (expiredTeam?.length ?? 0),
+        warned: warnLines.length,
         emailError,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
