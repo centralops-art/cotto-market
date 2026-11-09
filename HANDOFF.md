@@ -3221,7 +3221,7 @@ changes to the local `apps/mobile/.env` file automatically.
 
 ---
 
-## 28. Family / team-member drivers (2026-11-08, built on branch `feat/team-member-delivery`, migration applied to hosted + smoke-tested)
+## 28. Family / team-member drivers (2026-11-08, gate-tested, merged as PR #38 `80fcb35`)
 
 Founder requirement: home cooks must be able to have trusted family
 members (listed as storefront team members, no Cotto profile of their
@@ -3320,3 +3320,54 @@ on the other; the app kept showing cached data and checkout failed with a
 generic 401 message. Note: the throwaway repro script used in diagnosing
 it also called a global signOut -- any future script that signs in as a
 real account must use `signOut({ scope: "local" })`.
+
+---
+
+## 29. Sign-in fix (PR #39) + second production build (2026-11-08)
+
+**PR #39, squash-merged as `fa0adc8`** (mobile only, no backend change):
+- Account → Sign out and the post-deletion sign-out use
+  `signOut({ scope: "local" })`. The supabase-js default is **global**, which
+  cancelled the same account's session on every other device.
+- New `apps/mobile/src/lib/invoke-function.ts`: `invokeFunction()` /
+  `functionErrorMessage()` surface each edge function's own `{ error }`
+  message (instead of "Edge Function returned a non-2xx status code"). On
+  a 401 they ask the auth server whether the session is still valid and, if
+  it was cancelled, sign this phone out locally so the root layout routes to
+  sign-in. Network errors never sign anyone out. **Use `invokeFunction` for
+  any new edge function call** (fire-and-forget calls excepted).
+- `auth-context.tsx` adds Supabase's documented React Native `AppState`
+  handling (start/stop token auto-refresh with foreground state) and
+  re-checks the session on launch and on returning to the foreground.
+- 7 unit tests in `invoke-function.test.ts`. Not device-tested before the
+  build below.
+
+**Deploy state after both merges (2026-11-08):**
+- Database: migration 0060 on hosted (applied before merge, §28).
+- Edge function `cron-driver-license-expiry-check` redeployed (§28).
+- Admin: Vercel production deploy of `80fcb35` completed (family driver
+  review panel, readable availability). `fa0adc8` was mobile-only, so
+  Vercel skipped it as "not affected".
+- EAS env vars (production): all 5 `EXPO_PUBLIC_*` present and verified
+  identical to `apps/mobile/.env` and to the hosted anon key -- no change
+  needed.
+
+**Production builds from `fa0adc8`, auto-submitted:** Android version
+code 5 → Play internal track; iOS build 7 → App Store Connect / TestFlight
+(add testers to the TestFlight group manually, same as §27). Build IDs:
+Android `041a21fa-5506-4db3-86e9-471c6d2158fc`, iOS
+`47841cb8-31fb-4c85-bd68-e953238287b9`.
+
+Built from a **clean git worktree of `main`** (`../cotto-auth-fix`), not
+the main checkout: EAS uploads untracked-but-not-ignored files, and the
+main checkout has an untracked `legal/` folder. The worktree needed
+`apps/mobile/credentials/` copied in (git-ignored, but `--auto-submit`
+reads both store keys from those local paths).
+
+**Result:** both builds FINISHED; both submissions **Succeeded** (iOS
+submitted 6:25 PM, Android 6:33 PM, Nov 8). Android vc 5 is on the Play
+internal track; iOS 1.0.0 (7) is processing in App Store Connect for
+TestFlight. Not yet done: founder adds testers to the TestFlight group,
+updates both test phones, and device-checks the PR #39 sign-in behavior
+(sign out on one phone no longer signs the other out; a cancelled session
+now lands on the sign-in screen with "You've been signed out").
