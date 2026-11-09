@@ -1,8 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+
+// This page deliberately does NOT use @/lib/supabase/client. That client
+// stores its session in cookies shared with the whole admin.cottomarket.com
+// origin -- the same cookies the Cotto Admin dashboard uses. If the person
+// resetting a password is also signed in to the dashboard in the same
+// browser (exactly what happens when an admin uses "Send password reset
+// email" and then opens the link), the two sessions collide: the dashboard
+// tab can wipe the recovery session ("Auth session missing" on submit), and
+// this page's sign-out would sign the admin out of the dashboard. An
+// in-memory client with no persistence and no cross-tab broadcast keeps the
+// recovery session private to this one page load.
+function createIsolatedClient() {
+  return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
 
 // Public page for the Cotto mobile app's "forgot password" email link --
 // nothing to do with Cotto Admin itself (same reasoning as
@@ -30,8 +46,15 @@ function parseRecoveryTokens(hash: string) {
   return { access_token, refresh_token };
 }
 
+// Supabase redirects here with #error=...&error_code=otp_expired when a
+// link was already used or has expired (also common when an email
+// scanner opened the link first).
+const LINK_USED_MESSAGE =
+  "This reset link has already been used or has expired. Request a new one from the Cotto app (Sign in → Forgot password).";
+
 export default function ResetPasswordPage() {
-  const supabase = createClient();
+  const supabase = useMemo(createIsolatedClient, []);
+  const handledLink = useRef(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -40,17 +63,22 @@ export default function ResetPasswordPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    // Run once per page load (React dev mode runs effects twice, and the
+    // hash is cleared below).
+    if (handledLink.current) return;
+    handledLink.current = true;
     const tokens = parseRecoveryTokens(window.location.hash);
+    // Don't leave live tokens sitting in the address bar / history.
+    window.history.replaceState(null, "", window.location.pathname);
     if (!tokens) {
-      setError("This reset link is invalid or has expired. Request a new one from the Cotto app.");
+      setError(LINK_USED_MESSAGE);
       return;
     }
     supabase.auth.setSession(tokens).then(({ error: sessionError }) => {
-      if (sessionError) setError(sessionError.message);
+      if (sessionError) setError(LINK_USED_MESSAGE);
       else setSessionReady(true);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +93,10 @@ export default function ResetPasswordPage() {
     }
     setSubmitting(true);
     const { error: updateError } = await supabase.auth.updateUser({ password });
-    await supabase.auth.signOut();
+    // Global on purpose: after a password reset, every existing session for
+    // this account (e.g. on a lost or shared phone) should end. With the
+    // isolated client this no longer touches the admin dashboard's cookies.
+    if (!updateError) await supabase.auth.signOut({ scope: "global" });
     setSubmitting(false);
     if (updateError) {
       setError(updateError.message);
