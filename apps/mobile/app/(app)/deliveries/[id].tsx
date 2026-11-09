@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
+import { invokeFunction } from "../../../src/lib/invoke-function";
 import { MessageThread } from "../../../src/components/message-thread";
 
 const NEXT_ACTION: Record<string, { newStatus: string; label: string } | undefined> = {
@@ -54,12 +55,7 @@ export default function DeliveryClaimDetail() {
 
   const transition = useMutation({
     mutationFn: async (newStatus: string) => {
-      const { data, error } = await supabase.functions.invoke("update-delivery-status", {
-        body: { suborderId: id, newStatus },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      return invokeFunction("update-delivery-status", { suborderId: id, newStatus });
     },
     onSuccess: () => {
       setError(null);

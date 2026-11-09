@@ -1,6 +1,8 @@
 import type { Database } from "@cotto/shared";
 import type { Session } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { AppState } from "react-native";
+import { signOutIfSessionRevoked } from "./invoke-function";
 import { supabase } from "./supabase";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -46,6 +48,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await loadProfile(data.session.user.id);
       }
       setLoading(false);
+      // A stored session may have been cancelled server-side while the app
+      // was closed -- check once in the background, never blocking launch.
+      if (data.session) signOutIfSessionRevoked().catch(() => {});
+    });
+
+    // React Native pauses timers in the background, so supabase-js's token
+    // auto-refresh only runs while the app is in the foreground (Supabase's
+    // documented React Native setup). Coming back to the foreground also
+    // re-checks that the sign-in wasn't cancelled from another device.
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        supabase.auth.startAutoRefresh();
+        signOutIfSessionRevoked().catch(() => {});
+      } else {
+        supabase.auth.stopAutoRefresh();
+      }
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -58,7 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => subscription.subscription.unsubscribe();
+    return () => {
+      subscription.subscription.unsubscribe();
+      appStateSub.remove();
+    };
   }, []);
 
   return (

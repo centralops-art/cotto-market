@@ -2,6 +2,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { supabase } from "../../lib/supabase";
+import { functionErrorMessage } from "../../lib/invoke-function";
 
 interface Props {
   vendorId: string;
@@ -23,7 +24,7 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
       const { data, error } = await supabase.functions.invoke("stripe-connect-onboarding", {
         body: { vendorId },
       });
-      if (error) throw error;
+      if (error) throw new Error(await functionErrorMessage(error));
       if (data?.error) {
         setFormError(data.error);
         return;
@@ -42,7 +43,7 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
     setFormError(null);
     try {
       const { data, error } = await supabase.functions.invoke("stripe-connect-status", { body: { vendorId } });
-      if (error) throw error;
+      if (error) throw new Error(await functionErrorMessage(error));
       if (data?.error) {
         setFormError(data.error);
         return;
