@@ -61,6 +61,9 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  // Set while the account still needs its authenticator code (see below).
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => {
     // Run once per page load (React dev mode runs effects twice, and the
@@ -74,11 +77,44 @@ export default function ResetPasswordPage() {
       setError(LINK_USED_MESSAGE);
       return;
     }
-    supabase.auth.setSession(tokens).then(({ error: sessionError }) => {
-      if (sessionError) setError(LINK_USED_MESSAGE);
-      else setSessionReady(true);
-    });
+    (async () => {
+      const { error: sessionError } = await supabase.auth.setSession(tokens);
+      if (sessionError) {
+        setError(LINK_USED_MESSAGE);
+        return;
+      }
+      // Accounts with a verified authenticator (every Cotto Admin, since the
+      // dashboard requires one) get only an AAL1 session from a recovery
+      // link, and Supabase refuses a password change below AAL2 ("AAL2
+      // session is required..."). Ask for the authenticator code first.
+      const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aalError && aal.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
+        const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+        const verified = factors?.totp.find((f) => f.status === "verified");
+        if (factorsError || !verified) {
+          setError(factorsError?.message ?? "Couldn't find your authenticator. Contact support@cottomarket.com.");
+          return;
+        }
+        setMfaFactorId(verified.id);
+      }
+      setSessionReady(true);
+    })();
   }, [supabase]);
+
+  async function onVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mfaFactorId) return;
+    setError(null);
+    setSubmitting(true);
+    const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: mfaFactorId, code: mfaCode });
+    setSubmitting(false);
+    if (verifyError) {
+      setError("That code didn't work. Check your authenticator app and try the current code.");
+      setMfaCode("");
+      return;
+    }
+    setMfaFactorId(null);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -119,6 +155,34 @@ export default function ResetPasswordPage() {
       <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background p-8 text-center">
         <h1 className="text-2xl font-bold">Reset your password</h1>
         {error ? <p className="max-w-sm text-sm text-destructive">{error}</p> : <p className="text-muted-foreground">Opening your reset link...</p>}
+      </main>
+    );
+  }
+
+  if (mfaFactorId) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-8">
+        <h1 className="text-2xl font-bold">Enter your authenticator code</h1>
+        <p className="max-w-sm text-center text-sm text-muted-foreground">
+          This account uses two-step sign-in. Open your authenticator app and enter the current 6-digit code for Cotto
+          before setting a new password.
+        </p>
+        <form onSubmit={onVerifyCode} className="flex w-full max-w-sm flex-col gap-3">
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="6-digit code"
+            maxLength={6}
+            className="rounded-md border border-input bg-transparent px-3 py-2 text-center text-lg tracking-widest"
+            value={mfaCode}
+            onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+          />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" disabled={submitting || mfaCode.length !== 6}>
+            {submitting ? "Verifying..." : "Continue"}
+          </Button>
+        </form>
       </main>
     );
   }
