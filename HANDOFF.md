@@ -3429,8 +3429,9 @@ the new-password form. Non-MFA accounts see no change.
 
 **Verified:** admin typecheck/lint, CI, page renders locally (no-token path
 still shows the "already used or expired" message). **Not verified end to
-end:** the MFA step itself -- no throwaway MFA account was set up. First
-real run is the founder's own reset.
+end by me:** no throwaway MFA account was set up. **Founder-verified
+2026-11-12:** reset their own MFA account through the new code step and
+signed in with the new password -- fix confirmed live.
 
 Also noted: a password can never be "surfaced" to anyone -- Supabase stores
 only a hash. Resets go through Forgot password or the admin "Send password
