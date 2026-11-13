@@ -3406,3 +3406,32 @@ the test path.
 **Rule for later:** any public page on the admin origin that handles a
 non-admin user's session must not use `@/lib/supabase/client`; use an
 isolated in-memory client like `reset-password/page.tsx` does.
+
+---
+
+## 31. Password reset on MFA accounts: "AAL2 session is required" fix (PR #41, 2026-11-12)
+
+**Bug (founder-reported, resetting their own Tester Kitchen account
+`CPITTS1183@gmail.com`):** submitting a new password on
+`admin.cottomarket.com/reset-password` failed with "AAL2 session is
+required when MFA is enabled". Every Cotto Admin has a verified TOTP factor
+(the dashboard requires one), a recovery link only grants an AAL1 session,
+and Supabase refuses a password change below AAL2 once a verified factor
+exists. Customers/vendors without MFA were never affected, which is why
+§25/§30's tests passed.
+
+**Fix, squash-merged as `f50628a`, Vercel production deploy confirmed
+live (production bundle checked for the new step):** after `setSession`,
+the page calls `mfa.getAuthenticatorAssuranceLevel()`; if `nextLevel` is
+`aal2` and the session is below it, it shows an "Enter your authenticator
+code" step (`mfa.challengeAndVerify` with the verified TOTP factor) before
+the new-password form. Non-MFA accounts see no change.
+
+**Verified:** admin typecheck/lint, CI, page renders locally (no-token path
+still shows the "already used or expired" message). **Not verified end to
+end:** the MFA step itself -- no throwaway MFA account was set up. First
+real run is the founder's own reset.
+
+Also noted: a password can never be "surfaced" to anyone -- Supabase stores
+only a hash. Resets go through Forgot password or the admin "Send password
+reset email" button; never set a password for the founder via the admin API.
