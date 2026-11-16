@@ -3436,3 +3436,60 @@ signed in with the new password -- fix confirmed live.
 Also noted: a password can never be "surfaced" to anyone -- Supabase stores
 only a hash. Resets go through Forgot password or the admin "Send password
 reset email" button; never set a password for the founder via the admin API.
+
+---
+
+## 32. Website Sign Up wired to real account creation (cotto-web, 2026-11-15)
+
+**Problem:** every Sign Up button on cottomarket.com linked to
+`./sign-up.html`, which never existed (404). `./sign-in.html` and
+`./vendor-apply.html` (the "Sell" button) were dead the same way.
+
+**Fix, in `cotto-web` (the marketing site, not in git; deployed with
+`vercel deploy --prod` from that folder).** Three new hand-written static
+pages, styled to match the site (Lora/Mulish, cream/brick/forest green).
+The existing bundled pages were left untouched; Vercel `cleanUrls`
+redirects their `./sign-up.html` links to `/sign-up`.
+
+- **`sign-up.html`**: name, email, password (min 8), Terms & Privacy
+  checkbox that keeps Sign Up disabled until ticked -- same rules as
+  `signUpSchema`. Posts straight to `{SUPABASE_URL}/auth/v1/signup` with
+  `data.full_name` and `redirect_to=https://admin.cottomarket.com/email-confirmed`,
+  i.e. the same call `signUpWithPassword()` makes from the mobile app, so the
+  `handle_new_user` trigger creates the profile as usual. The success screen
+  says to confirm the email, then sign in on the app; profile completion and
+  SMS consent still happen in the app. `?as=vendor` adds a "tap Become a
+  Vendor in the app" note and step.
+- **`sign-in.html`**: explanatory only -- there is no customer web app, so it
+  says to sign in on the Cotto app (and use its Forgot password).
+- **`vendor-apply.html`**: three steps (create account, sign in on the app,
+  Become a Vendor) and a button to `/sign-up?as=vendor`.
+
+**The anon key is embedded in `sign-up.html`** (checked: JWT role `anon`,
+same key the mobile app ships). If the anon key is ever rotated, update it
+there too, or website signups break silently.
+
+**Bot protection:** no CAPTCHA. A hidden honeypot field fakes success
+without calling Supabase when filled; Supabase per-IP auth rate limits
+apply. If bot signups show up, add CAPTCHA (deferred per §13).
+
+**Known gap:** the app is still TestFlight / Play internal track only, so a
+website signup can't be used until the person gets the app. Add store
+links to the sign-up success screen and `sign-in.html` once public listings
+exist.
+
+**Verified:** local preview (validation, honeypot, success screen, vendor
+mode, 375px width). Before deploying, every existing live page was
+byte-identical to the local folder, so the deploy only added the three
+pages; `.env.local` still 404s. On production, the homepage "Sign up free"
+button opened `/sign-up`, and a real signup for
+`cpitts1183+cottoweb1115@gmail.com` returned 200. **Founder-verified
+2026-11-15:** the confirmation link landed on "You're confirmed!". That
+account (random password, never surfaced) is left as harmless test data.
+
+**Side effect during testing:** a probe POST to `/auth/v1/signup` with an
+empty email/password created one anonymous user
+(`cc7b9ffb-4f05-403e-b82c-3e224499c3d5`), because anonymous sign-ins are on
+for guest carts (0024). Harmless (same as any guest opening the app); left
+in place. The website form validates before sending, so it can't create
+anonymous users.
