@@ -3493,3 +3493,16 @@ empty email/password created one anonymous user
 for guest carts (0024). Harmless (same as any guest opening the app); left
 in place. The website form validates before sending, so it can't create
 anonymous users.
+
+**Follow-up, same day: site-wide 64×64 icon.** Every cotto-web page (all
+19) now uses `/assets/cotto-icon-64.png` (5.9 KB), rendered from the
+founder's `Brand Elements/Cotto Icon.svg` (a Canva SVG wrapping a PNG; the
+full-size copy is kept as `assets/cotto-icon.svg`). Plain pages just point
+their `<link rel="icon">` at it. The 13 bundled pages carried a 512×512
+icon packed into the bundle manifest (~170 KB each); their template's icon
+link now points at the PNG and the unused manifest entry was removed, so
+each is ~15% smaller. `assets/favicon.png` (old icon) is no longer
+referenced. **Re-exporting a page from the design tool brings the embedded
+icon back** -- repeat the swap for that page. Verified: all 19 pages load
+locally with no bundle errors, and every live page is byte-identical to the
+local file after deploy.
