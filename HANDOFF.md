@@ -3506,3 +3506,34 @@ referenced. **Re-exporting a page from the design tool brings the embedded
 icon back** -- repeat the swap for that page. Verified: all 19 pages load
 locally with no bundle errors, and every live page is byte-identical to the
 local file after deploy.
+
+---
+
+## 33. iOS launch crash on build 7: Expo native module version mismatch (2026-11-16)
+
+**Symptom:** iOS 1.0.0 (7) from TestFlight closed instantly on launch, on
+every iPhone. Android (vc 5, same commit) was fine. The founder's phone was
+the first time iOS had been opened at all (earlier testing was all Android).
+
+**Root cause (from the TestFlight crash log, pulled via the App Store
+Connect API):** `DYLD Symbol missing:
+ExpoModulesCore.BaseModule.willDestroy`, referenced from
+`ExpoLocation.framework`. The project was on `expo` 57.0.4 /
+`expo-modules-core` 57.0.3, but `expo-location` had drifted to 57.0.8.
+SDK 57 packages ship **prebuilt iOS xcframeworks** (`prebuilds/`), and
+expo-location's was compiled against a newer core, so iOS refused to load
+the app. Android compiles from source, which is why only iOS crashed.
+
+**Fix:** `expo` → ~57.0.33 and `npx expo install --fix` (core 57.0.26,
+location 57.0.23, react-native 0.86.3, etc.). `expo-doctor` then flagged
+and we fixed: missing `react-native-worklets` peer (Reanimated 4 needs it
+as a direct dependency), stale `@expo/dom-webview` 57.0.0 (now a direct
+dep at ~57.0.1), and `newArchEnabled` in app.json (no longer valid; new
+arch is always on). `expo install` also added the `expo-status-bar`
+config plugin. Now 21/21 doctor checks pass; typecheck, lint, tests and a
+local `expo export --platform ios` all pass.
+
+**For next time:** run `npx expo install --fix` and `npx expo-doctor`
+before every production build. A mismatched Expo module can build fine and
+only crash on iOS at launch. Needs a new native build (no OTA): iOS build 8
++ Android vc 6, built from a clean worktree as in §29.

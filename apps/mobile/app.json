@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "plugins": [
       "expo-router",
       "expo-web-browser",
@@ -37,7 +36,8 @@
           "project": "cotto-mobile"
         }
       ],
-      "./plugins/withDisableSentryAutoUpload.js"
+      "./plugins/withDisableSentryAutoUpload.js",
+      "expo-status-bar"
     ],
     "ios": {
       "supportsTablet": true,
