@@ -3537,3 +3537,11 @@ local `expo export --platform ios` all pass.
 before every production build. A mismatched Expo module can build fine and
 only crash on iOS at launch. Needs a new native build (no OTA): iOS build 8
 + Android vc 6, built from a clean worktree as in §29.
+
+**Merged as PR #42 (`f126bad`). Production builds from `f126bad`,
+auto-submitted (2026-11-16, ~8:57 PM):** iOS 1.0.0 (8) → TestFlight, build
+`4710e526-5e8d-495e-a64f-dfad345afba6`; Android vc 6 → Play internal track,
+build `9cf37ec6-e2ab-4d38-a901-af6dcf286096`. Built from a clean detached
+worktree (`../cotto-build`) with `credentials/` copied in, same as §29.
+Not yet done: add build 8 to the TestFlight internal group and confirm it
+opens on an iPhone.
