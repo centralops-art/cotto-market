@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../../src/lib/supabase";
 import { invokeFunction } from "../../../src/lib/invoke-function";
 import { MessageThread } from "../../../src/components/message-thread";
@@ -13,6 +14,7 @@ const NEXT_ACTION: Record<string, { newStatus: string; label: string } | undefin
 };
 
 export default function KitchenSuborderDetail() {
+  const keyboard = useKeyboardAwareScroll();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -79,7 +81,14 @@ export default function KitchenSuborderDetail() {
   const canCancel = ["received", "confirmed", "preparing"].includes(suborder.status);
 
   return (
-    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 48, gap: 16 }}>
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 48 + keyboard.keyboardHeight, gap: 16 }}
+    >
       <Pressable onPress={() => router.back()}>
         <Text className="text-white/60">&larr; Back</Text>
       </Pressable>

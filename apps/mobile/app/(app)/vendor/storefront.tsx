@@ -1,6 +1,7 @@
 import type { ServiceAddressInput, StorefrontBasicsInput, ThemePalette, LayoutStyle } from "@cotto/shared";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
 import { useVendor } from "../../../src/lib/use-vendor";
 import { AddressSection } from "../../../src/features/storefront-editor/address-section";
 import { HeaderBasicsSection } from "../../../src/features/storefront-editor/header-basics-section";
@@ -9,6 +10,7 @@ import { TeamMembersSection } from "../../../src/features/storefront-editor/team
 import { ThemeLayoutSection } from "../../../src/features/storefront-editor/theme-layout-section";
 
 export default function StorefrontEditor() {
+  const keyboard = useKeyboardAwareScroll();
   const router = useRouter();
   const { data: vendor, isLoading, patchVendor } = useVendor();
 
@@ -21,8 +23,14 @@ export default function StorefrontEditor() {
   }
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-cotto-dark" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 96, gap: 24 }}>
+    <View className="flex-1 bg-cotto-dark">
+      <ScrollView
+        ref={keyboard.scrollRef}
+        onScroll={keyboard.onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 96 + keyboard.keyboardHeight, gap: 24 }}
+      >
         <Pressable onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
@@ -74,6 +82,6 @@ export default function StorefrontEditor() {
           onSaveLayout={async (layout: LayoutStyle) => patchVendor({ layout_style: layout })}
         />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }

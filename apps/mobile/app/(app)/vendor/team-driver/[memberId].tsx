@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../../../src/lib/use-keyboard-aware-scroll";
 import type { VehicleType } from "@cotto/shared";
 import { supabase } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/lib/auth-context";
@@ -19,6 +20,7 @@ const STEP_LABELS = ["License", "Vehicle", "Insurance", "Agreement"];
 // the vendor_team_drivers row; the DB guard trigger always lands a non-admin
 // write as pending_review.
 export default function TeamDriverSetup() {
+  const keyboard = useKeyboardAwareScroll();
   const { memberId } = useLocalSearchParams<{ memberId: string }>();
   const { session } = useAuth();
   const router = useRouter();
@@ -87,8 +89,14 @@ export default function TeamDriverSetup() {
   }
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-cotto-dark" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 64, paddingBottom: 96 }}>
+    <View className="flex-1 bg-cotto-dark">
+      <ScrollView
+        ref={keyboard.scrollRef}
+        onScroll={keyboard.onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 64, paddingBottom: 96 + keyboard.keyboardHeight }}
+      >
         <Pressable className="mb-4" onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
@@ -138,6 +146,6 @@ export default function TeamDriverSetup() {
 
         {step === 3 && <AgreementStep onBack={() => setStep(2)} onNext={submit} />}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }

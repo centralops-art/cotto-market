@@ -3,10 +3,12 @@ import { signInSchema, signInWithPassword, type SignInInput } from "@cotto/share
 import { Link } from "expo-router";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 
 export default function SignIn() {
+  const keyboard = useKeyboardAwareScroll();
   const [formError, setFormError] = useState<string | null>(null);
   const {
     control,
@@ -24,7 +26,14 @@ export default function SignIn() {
   }
 
   return (
-    <View className="flex-1 justify-center gap-4 bg-cotto-dark px-6">
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", gap: 16, paddingHorizontal: 24, paddingBottom: keyboard.keyboardHeight }}
+    >
       <Text className="mb-4 text-3xl font-bold text-cotto-accent">Cotto</Text>
 
       <Controller
@@ -81,6 +90,6 @@ export default function SignIn() {
       <Link href="/(auth)/forgot-password" className="text-center text-white/70">
         Forgot password?
       </Link>
-    </View>
+    </ScrollView>
   );
 }

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../../src/lib/supabase";
 import { useVendor } from "../../../src/lib/use-vendor";
 import { ItemForm, type ItemFormValues } from "../../../src/features/menu-builder/item-form";
@@ -11,6 +12,7 @@ type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
 type MenuCategory = Database["public"]["Tables"]["menu_categories"]["Row"];
 
 export default function MenuBuilder() {
+  const keyboard = useKeyboardAwareScroll();
   const router = useRouter();
   const { data: vendor, isLoading: vendorLoading } = useVendor();
   const queryClient = useQueryClient();
@@ -158,7 +160,14 @@ export default function MenuBuilder() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 96, gap: 16 }}>
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ padding: 24, paddingTop: 56, paddingBottom: 96 + keyboard.keyboardHeight, gap: 16 }}
+    >
       <Pressable onPress={() => router.back()}>
         <Text className="text-white/60">&larr; Back</Text>
       </Pressable>

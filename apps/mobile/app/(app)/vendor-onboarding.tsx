@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 import { useAuth } from "../../src/lib/auth-context";
 import { ProgressBar } from "../../src/features/vendor-onboarding/progress-bar";
@@ -15,6 +16,7 @@ import type { BusinessBasicsInput, Database } from "@cotto/shared";
 type VendorUpdate = Database["public"]["Tables"]["vendors"]["Update"];
 
 export default function VendorOnboarding() {
+  const keyboard = useKeyboardAwareScroll();
   const { session } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -67,8 +69,14 @@ export default function VendorOnboarding() {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-cotto-dark" behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 64, paddingBottom: 96 }}>
+    <View className="flex-1 bg-cotto-dark">
+      <ScrollView
+        ref={keyboard.scrollRef}
+        onScroll={keyboard.onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, padding: 24, paddingTop: 64, paddingBottom: 96 + keyboard.keyboardHeight }}
+      >
         <ProgressBar step={step} />
 
         {step === 0 && (
@@ -157,6 +165,6 @@ export default function VendorOnboarding() {
           />
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }

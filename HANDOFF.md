@@ -3545,3 +3545,41 @@ build `9cf37ec6-e2ab-4d38-a901-af6dcf286096`. Built from a clean detached
 worktree (`../cotto-build`) with `credentials/` copied in, same as §29.
 Not yet done: add build 8 to the TestFlight internal group and confirm it
 opens on an iPhone.
+
+---
+
+## 34. Keyboard covering text fields on mobile (2026-11-17)
+
+**Symptom:** typing in the order messenger, the keyboard covered the
+message field, and the page couldn't be scrolled up to reveal it. The
+Leave Review screen had the same problem.
+
+**First attempt didn't work:** `automaticallyAdjustKeyboardInsets` on the
+ScrollView plus a `KeyboardAvoidingView` (Android `height`). Founder tested
+on the dev client and nothing moved. The likely cause on Android is that
+SDK 57 apps are always edge-to-edge, so the window no longer resizes for
+the keyboard and the old `adjustResize` / KAV behavior can't be relied on.
+
+**Fix:** new hook `apps/mobile/src/lib/use-keyboard-aware-scroll.ts`
+(pure JS, no native module, so no dev client rebuild needed). It listens
+for the keyboard opening, adds the keyboard's height to the ScrollView's
+bottom padding, then scrolls just far enough that the focused field sits
+24px above the keyboard. Padding is removed when the keyboard closes.
+Same code path on iOS and Android.
+
+**Screens using it (15):** order tracking, Kitchen detail and delivery
+detail (the shared `MessageThread`), Leave Review, cart, menu builder,
+storefront editor, vendor onboarding, delivery onboarding, team driver
+setup, sign in, sign up, forgot password, reset password, complete
+profile. The four screens that had the old iOS-only `KeyboardAvoidingView`
+(storefront, both onboardings, team driver) now use the hook instead. The
+five centered auth/profile forms were plain `View`s and are now
+ScrollViews that slide up when the keyboard opens. Browse is left alone
+(its search box is at the top). **New screens with text fields should use
+this hook** rather than `KeyboardAvoidingView`.
+
+**Verified:** typecheck passes. Founder confirmed on the dev client that
+the order messenger and Leave Review fields now move above the keyboard.
+**Not yet verified on a device:** the other 11 screens, and Android vs
+iOS was not separately confirmed. JS-only, but testers only get it with
+the next EAS build (no OTA).
