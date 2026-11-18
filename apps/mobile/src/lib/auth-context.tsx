@@ -66,11 +66,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+    // Keep this callback synchronous. supabase-js runs it while holding its
+    // auth lock, so awaiting another Supabase call in here (like the profile
+    // query) can deadlock the client: every later request, such as saving the
+    // phone number on complete-profile, then hangs forever with no error.
+    // Deferring with setTimeout lets the lock release first (Supabase's
+    // documented workaround).
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (event === "PASSWORD_RECOVERY") setIsPasswordRecovery(true);
       setSession(newSession);
-      if (newSession?.user.id) {
-        await loadProfile(newSession.user.id);
+      const userId = newSession?.user.id;
+      if (userId) {
+        setTimeout(() => {
+          loadProfile(userId).catch(() => {});
+        }, 0);
       } else {
         setProfile(null);
       }
