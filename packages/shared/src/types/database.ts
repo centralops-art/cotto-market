@@ -974,6 +974,9 @@ export type Database = {
           status: Database["public"]["Enums"]["suborder_status"]
           stripe_transfer_id: string | null
           stripe_transfer_reversal_id: string | null
+          stripe_tax_calculation_id: string | null
+          stripe_tax_reversal_id: string | null
+          stripe_tax_transaction_id: string | null
           subtotal_cents: number
           tax_cents: number
           updated_at: string
@@ -998,6 +1001,9 @@ export type Database = {
           status?: Database["public"]["Enums"]["suborder_status"]
           stripe_transfer_id?: string | null
           stripe_transfer_reversal_id?: string | null
+          stripe_tax_calculation_id?: string | null
+          stripe_tax_reversal_id?: string | null
+          stripe_tax_transaction_id?: string | null
           subtotal_cents: number
           tax_cents?: number
           updated_at?: string
@@ -1022,6 +1028,9 @@ export type Database = {
           status?: Database["public"]["Enums"]["suborder_status"]
           stripe_transfer_id?: string | null
           stripe_transfer_reversal_id?: string | null
+          stripe_tax_calculation_id?: string | null
+          stripe_tax_reversal_id?: string | null
+          stripe_tax_transaction_id?: string | null
           subtotal_cents?: number
           tax_cents?: number
           updated_at?: string

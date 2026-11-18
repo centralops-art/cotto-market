@@ -12,6 +12,7 @@
 // Requires STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY secrets.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
+import { recordTaxTransaction } from "../_shared/stripe-tax.ts";
 
 Deno.serve(async (req) => {
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -68,9 +69,16 @@ Deno.serve(async (req) => {
 
       const { data: suborders, error: suborderError } = await service
         .from("vendor_suborders")
-        .select("id, vendor_id, vendor_payout_cents, vendors(email, storefront_name, stripe_account_id)")
+        .select("id, order_id, vendor_id, vendor_payout_cents, stripe_tax_calculation_id, stripe_tax_transaction_id, vendors(email, storefront_name, stripe_account_id)")
         .eq("order_id", orderId);
       if (suborderError) throw suborderError;
+
+      // Record the tax collected for each vendor with Stripe Tax so it shows
+      // in Stripe's tax reports (migration 0061). Before the Transfer loop:
+      // it doesn't depend on the vendor having a Connect account.
+      for (const suborder of suborders ?? []) {
+        await recordTaxTransaction(service, stripe, suborder);
+      }
 
       for (const suborder of suborders ?? []) {
         const vendor = suborder.vendors as unknown as { email: string | null; storefront_name: string; stripe_account_id: string | null };

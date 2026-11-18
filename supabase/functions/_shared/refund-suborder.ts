@@ -16,6 +16,7 @@
 // mechanism the admin route already established (migration 0026).
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type Stripe from "npm:stripe@17";
+import { reverseTaxTransaction } from "./stripe-tax.ts";
 
 export type RefundableSuborder = {
   id: string;
@@ -98,6 +99,18 @@ export async function refundSuborder(
         metadata: { order_id: order.id, stripe_transfer_id: suborder.stripe_transfer_id },
       });
     }
+  }
+
+  // This refund covers the suborder's whole food subtotal and its tax, so
+  // its Stripe Tax transaction is fully reversed (migration 0061). Looked
+  // up here rather than passed in so callers don't need to select it.
+  const { data: taxIds } = await service
+    .from("vendor_suborders")
+    .select("stripe_tax_transaction_id, stripe_tax_reversal_id")
+    .eq("id", suborder.id)
+    .maybeSingle();
+  if (taxIds) {
+    await reverseTaxTransaction(service, stripe, { id: suborder.id, order_id: order.id, ...taxIds });
   }
 
   // Same simplification as the admin refund route: compares this refund

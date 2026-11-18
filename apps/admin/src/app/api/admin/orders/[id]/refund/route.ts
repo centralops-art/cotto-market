@@ -95,6 +95,44 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
   }
 
+  // Reverse the Stripe Tax transaction for each suborder (migration 0061),
+  // so Stripe's tax reports don't count tax that was refunded. Same rule as
+  // the Transfer reversals above: only a full refund is reversed
+  // automatically; a partial refund is left for manual reconciliation (the
+  // audit_log entry above already flags it).
+  if (isFullRefund) {
+    const { data: taxSuborders } = await admin.service
+      .from("vendor_suborders")
+      .select("id, stripe_tax_transaction_id")
+      .eq("order_id", id)
+      .not("stripe_tax_transaction_id", "is", null)
+      .is("stripe_tax_reversal_id", null);
+
+    for (const suborder of taxSuborders ?? []) {
+      try {
+        const reversal = await stripe.tax.transactions.createReversal(
+          {
+            mode: "full",
+            original_transaction: suborder.stripe_tax_transaction_id!,
+            reference: `suborder-${suborder.id}-refund`,
+            metadata: { order_id: id, vendor_suborder_id: suborder.id },
+          },
+          { idempotencyKey: `tax-reversal-${suborder.id}` }
+        );
+        await admin.service.from("vendor_suborders").update({ stripe_tax_reversal_id: reversal.id }).eq("id", suborder.id);
+      } catch (err) {
+        await admin.service.from("audit_log").insert({
+          actor_profile_id: admin.user.id,
+          action: "tax_reversal_failed",
+          target_table: "vendor_suborders",
+          target_id: suborder.id,
+          reason: (err as Error).message,
+          metadata: { order_id: id, stripe_tax_transaction_id: suborder.stripe_tax_transaction_id },
+        });
+      }
+    }
+  }
+
   let emailError: string | undefined;
   const { data: customerAuth } = await admin.service.auth.admin.getUserById(order.customer_profile_id);
   if (customerAuth?.user?.email) {
