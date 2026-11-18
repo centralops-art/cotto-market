@@ -241,6 +241,7 @@ Deno.serve(async (req) => {
       platformFeeCents: number;
       vendorPayoutCents: number;
       taxCents: number;
+      taxCalculationId: string | null;
       items: { menuItemId: string; name: string; unitPriceCents: number; quantity: number }[];
     }[] = [];
 
@@ -340,6 +341,8 @@ Deno.serve(async (req) => {
         platformFeeCents,
         vendorPayoutCents: subtotalCents - platformFeeCents,
         taxCents: vendorTaxCents,
+        // Turned into a Stripe Tax transaction by stripe-webhook once paid (migration 0061).
+        taxCalculationId: taxCalc.id ?? null,
         items: items.map((i) => ({
           menuItemId: i.menu_item_id,
           name: i.name,
@@ -396,6 +399,7 @@ Deno.serve(async (req) => {
           platform_fee_cents: plan.platformFeeCents,
           vendor_payout_cents: plan.vendorPayoutCents,
           tax_cents: plan.taxCents,
+          stripe_tax_calculation_id: plan.taxCalculationId,
           status: "received",
         })
         .select()
