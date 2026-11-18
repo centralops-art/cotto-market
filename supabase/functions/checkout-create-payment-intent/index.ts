@@ -423,7 +423,25 @@ Deno.serve(async (req) => {
       .eq("id", order.id);
     if (updateError) throw updateError;
 
-    return json({ clientSecret: paymentIntent.client_secret, orderId: order.id });
+    // Price breakdown so the app can show it before the customer enters card
+    // details (Stripe's PaymentSheet only shows the grand total). Older app
+    // builds ignore this field.
+    const breakdown = {
+      vendors: suborderPlans.map((plan) => ({
+        vendorId: plan.vendorId,
+        vendorName: vendorsById.get(plan.vendorId)!.storefront_name,
+        fulfillment: plan.fulfillment,
+        subtotalCents: plan.subtotalCents,
+        deliveryFeeCents: plan.deliveryFeeCents,
+        taxCents: plan.taxCents,
+      })),
+      subtotalCents: totalSubtotalCents,
+      deliveryFeeCents: totalDeliveryFeeCents,
+      taxCents: totalTaxCents,
+      totalCents,
+    };
+
+    return json({ clientSecret: paymentIntent.client_secret, orderId: order.id, breakdown });
   } catch (err) {
     return json({ error: (err as Error).message }, 500);
   }

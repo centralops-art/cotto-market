@@ -191,13 +191,23 @@ export default function Cart() {
           };
         }
       }
-      return invokeFunction<{ clientSecret: string; orderId: string }>("checkout-create-payment-intent", {
-        cartId: cartQuery.data.id,
-        fulfillments: payload,
-      });
+      return invokeFunction<{ clientSecret: string; orderId: string; breakdown?: unknown }>(
+        "checkout-create-payment-intent",
+        {
+          cartId: cartQuery.data.id,
+          fulfillments: payload,
+        }
+      );
     },
     onSuccess: (data) => {
-      router.push({ pathname: "/(app)/checkout", params: { clientSecret: data.clientSecret, orderId: data.orderId } });
+      router.push({
+        pathname: "/(app)/checkout",
+        params: {
+          clientSecret: data.clientSecret,
+          orderId: data.orderId,
+          breakdown: data.breakdown ? JSON.stringify(data.breakdown) : "",
+        },
+      });
     },
     onError: (err) => setCheckoutError((err as Error).message),
   });
@@ -397,7 +407,7 @@ export default function Cart() {
             <Text className="text-white/70">Subtotal</Text>
             <Text className="text-white">${(subtotalCents / 100).toFixed(2)}</Text>
           </View>
-          <Text className="text-xs text-white/40">Delivery fee and tax are calculated at checkout.</Text>
+          <Text className="text-xs text-white/40">You'll see the delivery fee, tax and total before entering payment.</Text>
 
           {checkoutError && <Text className="text-red-400">{checkoutError}</Text>}
 
