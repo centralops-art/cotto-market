@@ -3622,4 +3622,35 @@ PR #43's first CI run failed lint (unused `View` import left in
    preview, and a customer viewing a vendor with zero items.
 4. Account deletion blocked while a vendor is `draft`/`pending_review`
    (§25 step 5), on a second throwaway account.
-5. The delivery fee breakdown fix, once built.
+5. The delivery fee breakdown (§36) on a standalone build (already
+   gate-tested on the dev client).
+
+---
+
+## 36. Checkout shows delivery fee, distance, tax and total before payment (PR #44, 2026-11-17)
+
+**Problem:** customers never saw the delivery fee or tax as separate
+amounts. The cart showed only the food subtotal ("calculated at
+checkout"), the checkout screen was a bare "Pay now" button, and
+Stripe's PaymentSheet shows only the grand total.
+
+**Fix:**
+- `checkout-create-payment-intent` also returns a `breakdown` it already
+  computed: per vendor `vendorName`, `fulfillment`, `subtotalCents`,
+  `deliveryFeeCents`, `deliveryMiles` (one-way Mapbox driving distance,
+  rounded to 0.1 mi, null for pickup), `taxCents`; plus order totals.
+  No pricing logic changed. Older app builds ignore the field.
+- Mobile checkout screen is now "Review your order": per-kitchen food
+  subtotal, "Delivery fee (6.1 mi)" or "Pickup: Free", tax, then the
+  total; combined totals and a "delivery is priced per kitchen" note for
+  multi-vendor orders. Button reads "Continue to payment · $X"; the card
+  form opens only after that. Founder's call: show distance, but no
+  per-mile math.
+- The breakdown is passed cart → checkout as a JSON route param, parsed
+  by `apps/mobile/src/lib/checkout-breakdown.ts` (unit-tested). If it's
+  missing or malformed, the screen falls back to the old behavior; a bad
+  distance only hides the distance.
+
+**Deployed:** `checkout-create-payment-intent` version 11 on hosted
+(2026-11-17), before merge. **Founder gate test passed on the dev client
+(2026-11-17).** Testers get the new screen with the next EAS build.

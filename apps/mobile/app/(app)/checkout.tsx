@@ -1,11 +1,27 @@
+import { formatCents } from "@cotto/shared";
 import { useStripe } from "@stripe/stripe-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useAuth } from "../../src/lib/auth-context";
+import { formatDeliveryMiles, parseCheckoutBreakdownParam } from "../../src/lib/checkout-breakdown";
+
+function Row({ label, value, bold = false }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <View className="flex-row justify-between">
+      <Text className={bold ? "font-bold text-white" : "text-white/70"}>{label}</Text>
+      <Text className={bold ? "font-bold text-white" : "text-white"}>{value}</Text>
+    </View>
+  );
+}
 
 export default function Checkout() {
-  const { clientSecret, orderId } = useLocalSearchParams<{ clientSecret: string; orderId: string }>();
+  const { clientSecret, orderId, breakdown: breakdownParam } = useLocalSearchParams<{
+    clientSecret: string;
+    orderId: string;
+    breakdown?: string;
+  }>();
+  const breakdown = useMemo(() => parseCheckoutBreakdownParam(breakdownParam), [breakdownParam]);
   const router = useRouter();
   const { profile } = useAuth();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
@@ -42,9 +58,53 @@ export default function Checkout() {
     router.replace({ pathname: "/(app)/order-confirmation", params: { orderId } });
   }
 
+  const multiVendor = (breakdown?.vendors.length ?? 0) > 1;
+
   return (
-    <View className="flex-1 items-center justify-center gap-6 bg-cotto-dark px-6">
-      <Text className="text-2xl font-bold text-white">Checkout</Text>
+    <ScrollView
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24, paddingVertical: 48, gap: 24 }}
+    >
+      <Text className="text-center text-2xl font-bold text-white">Review your order</Text>
+
+      {breakdown ? (
+        <View className="gap-4 rounded-lg border border-white/10 p-4">
+          {breakdown.vendors.map((v) => (
+            <View key={v.vendorId} className="gap-1">
+              {multiVendor && <Text className="font-semibold text-white">{v.vendorName}</Text>}
+              <Row label="Food subtotal" value={formatCents(v.subtotalCents)} />
+              {v.fulfillment === "delivery" ? (
+                <Row
+                  label={
+                    v.deliveryMiles === null ? "Delivery fee" : `Delivery fee (${formatDeliveryMiles(v.deliveryMiles)})`
+                  }
+                  value={formatCents(v.deliveryFeeCents)}
+                />
+              ) : (
+                <Row label="Pickup" value="Free" />
+              )}
+              <Row label="Tax" value={formatCents(v.taxCents)} />
+            </View>
+          ))}
+          <View className="h-px bg-white/10" />
+          {multiVendor && (
+            <View className="gap-1">
+              <Row label="Food subtotal" value={formatCents(breakdown.subtotalCents)} />
+              <Row label="Delivery fees" value={formatCents(breakdown.deliveryFeeCents)} />
+              <Row label="Tax" value={formatCents(breakdown.taxCents)} />
+            </View>
+          )}
+          <Row label="Total" value={formatCents(breakdown.totalCents)} bold />
+          {multiVendor && breakdown.deliveryFeeCents > 0 && (
+            <Text className="text-xs text-white/40">
+              Each kitchen's order is delivered separately, so delivery is priced per kitchen.
+            </Text>
+          )}
+        </View>
+      ) : (
+        <Text className="text-center text-white/60">Your total is shown on the next screen.</Text>
+      )}
+
       {error && <Text className="text-center text-red-400">{error}</Text>}
       {!ready ? (
         <ActivityIndicator color="#D96A3E" />
@@ -54,12 +114,18 @@ export default function Checkout() {
           disabled={presenting}
           onPress={pay}
         >
-          {presenting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Pay now</Text>}
+          {presenting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="font-semibold text-white">
+              {breakdown ? `Continue to payment · ${formatCents(breakdown.totalCents)}` : "Continue to payment"}
+            </Text>
+          )}
         </Pressable>
       )}
-      <Pressable onPress={() => router.back()}>
+      <Pressable className="items-center" onPress={() => router.back()}>
         <Text className="text-white/60">Cancel</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
