@@ -1,6 +1,10 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-08. First real app store submission is live (§27):
+Last updated: 2026-11-17. **Latest state is at the bottom: §33 (iOS
+launch crash fix, build 8), §34 (keyboard fix), §35 (next build plan and
+the founder's next gate-test list).** The summary below is from 2026-11-08.
+
+First real app store submission is live (§27):
 both Android (Play internal track) and iOS (TestFlight, processing) built
 and submitted successfully, test-mode Stripe, after fixing three real EAS
 build bugs (export-compliance flag, Sentry/sentry-cli build failures on both
@@ -141,7 +145,7 @@ it's tested via Expo dev client + EAS builds.
 
 ---
 
-## 4. Database: migrations 0001–0031 (all applied to hosted + local)
+## 4. Database: migrations 0001–0060 (all applied to hosted; table below stops at 0049, later ones are in §21–§28)
 
 | # | Contents |
 |---|---|
@@ -3582,4 +3586,40 @@ this hook** rather than `KeyboardAvoidingView`.
 the order messenger and Leave Review fields now move above the keyboard.
 **Not yet verified on a device:** the other 11 screens, and Android vs
 iOS was not separately confirmed. JS-only, but testers only get it with
-the next EAS build (no OTA).
+the next EAS build (no OTA). Founder's call: merge now, check the other
+screens on the next build (see §35's gate-test list).
+
+PR #43's first CI run failed lint (unused `View` import left in
+`complete-profile.tsx`); fixed in a follow-up commit on the same branch.
+
+---
+
+## 35. Housekeeping + next build plan (2026-11-17)
+
+- **PR #37 closed** (an earlier, unmerged attempt at the AAL2 password-reset
+  fix that shipped as PR #41).
+- **`legal/` moved out of the repo** to `C:\Users\Central Ops\cotto-legal\`
+  (`Cotto_Legal_Exposure_Summary.docx` + `build_legal_summary.js`). The
+  main checkout no longer has untracked files, but keep building from a
+  clean worktree anyway (§29).
+- **iOS build 8 still not opened on an iPhone.** Founder is waiting on
+  Apple's approval of an external TestFlight test group to make installs
+  simpler.
+- **Next EAS build is on hold** until one more fix lands: the customer
+  should see the delivery fee breakdown before entering payment info.
+  Then build iOS 9 / Android vc 7 from a clean worktree, after
+  `npx expo install --fix` + `npx expo-doctor` (§33).
+
+**Founder's next manual gate test (on the next build):**
+1. Keyboard fix (§34) on the 11 screens not yet checked: cart, menu
+   builder, storefront editor, vendor onboarding, delivery onboarding,
+   team driver setup, sign in, sign up, forgot password, reset password,
+   complete profile. Check on both iOS and Android.
+2. Mobile error boundary (§22): force a render-time crash, confirm the
+   fallback screen and a matching event in the `cotto-mobile` Sentry
+   project.
+3. Empty states (§22): a brand-new vendor's menu builder and storefront
+   preview, and a customer viewing a vendor with zero items.
+4. Account deletion blocked while a vendor is `draft`/`pending_review`
+   (§25 step 5), on a second throwaway account.
+5. The delivery fee breakdown fix, once built.
