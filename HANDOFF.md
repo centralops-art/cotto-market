@@ -3680,3 +3680,46 @@ confirmed from here; check expo.dev, Play Console and App Store Connect.
 **Not yet done:** confirm iOS opens on an iPhone (builds 8 and 9 have
 never been opened; founder is waiting on Apple approving an external
 test group), then run §35's gate-test list on these builds.
+
+---
+
+## 38. Signup freeze on the phone-number screen + builds iOS 10 / Android vc 8 (2026-11-17)
+
+**Bug:** an iOS tester got stuck on complete-profile. Tapping Continue
+spun forever; they could go back but not move forward. Sentry wasn't
+checked (it needed a sign-in) and likely had nothing, since there was no
+crash or thrown error.
+
+**Cause:** `apps/mobile/src/lib/auth-context.tsx`'s `onAuthStateChange`
+callback awaited the `profiles` query. supabase-js runs that callback
+while holding its auth lock, so awaiting another Supabase call inside it
+can deadlock the client; every later request (here, saving the phone
+number) then hangs with no error. Timing-dependent, so not every signup
+hits it. Shared JS, so Android was exposed too (no Android reports yet).
+
+**Fix (PR #45, `7dc3f5e`):** the callback is now synchronous and defers
+`loadProfile` with `setTimeout(..., 0)` (Supabase's documented
+workaround). The tester's report (freeze only after Continue, back still
+worked) matches the diagnosis. **Lesson: never `await` a Supabase call
+inside `onAuthStateChange`.**
+
+**Builds:** from `7dc3f5e` in the `../cotto-build` worktree (detached at
+`origin/main`, `credentials/` present). Pre-build: `pnpm install`
+up to date, `expo install --check` clean, `expo-doctor` 21/21. eas-cli
+27.5.0, `--profile production --non-interactive --auto-submit --no-wait`,
+one platform at a time, 11:11-11:12 PM:
+- iOS 1.0.0 (10) → TestFlight, build
+  `e068ea67-c71d-4393-811c-e6718e4a7de3`, submission
+  `f582007a-d754-42bf-9478-1af13184f6f9`. EAS printed "No complete App
+  Store Connect credentials, skipping TestFlight setup" but still
+  scheduled the submission; add the build to the TestFlight group
+  manually, same as §27.
+- Android vc 8 → Play internal track, build
+  `db230d0c-44eb-4304-ab8f-fb9308f24719`, submission
+  `8d0e7abe-33d6-4077-befa-ca44ace16acc`.
+
+**Status when logged:** both builds IN_PROGRESS; submission success not
+confirmed. Check expo.dev, App Store Connect and Play Console.
+
+**Not yet done:** tester retests signup on both builds (enter a phone
+number, tap Continue, should land in the app).
