@@ -3,10 +3,12 @@ import { requestPasswordReset, requestPasswordResetSchema, type RequestPasswordR
 import { Link } from "expo-router";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 
 export default function ForgotPassword() {
+  const keyboard = useKeyboardAwareScroll();
   const [formError, setFormError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const {
@@ -43,7 +45,14 @@ export default function ForgotPassword() {
   }
 
   return (
-    <View className="flex-1 justify-center gap-4 bg-cotto-dark px-6">
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", gap: 16, paddingHorizontal: 24, paddingBottom: keyboard.keyboardHeight }}
+    >
       <Text className="mb-2 text-2xl font-bold text-white">Reset your password</Text>
 
       <Controller
@@ -76,6 +85,6 @@ export default function ForgotPassword() {
       <Link href="/(auth)/sign-in" className="mt-4 text-center text-white/70">
         Back to sign in
       </Link>
-    </View>
+    </ScrollView>
   );
 }

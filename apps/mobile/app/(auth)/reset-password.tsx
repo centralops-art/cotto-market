@@ -4,7 +4,8 @@ import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 import { useAuth } from "../../src/lib/auth-context";
 
@@ -21,6 +22,7 @@ function parseRecoveryTokens(url: string | null) {
 }
 
 export default function ResetPassword() {
+  const keyboard = useKeyboardAwareScroll();
   const url = Linking.useURL();
   const router = useRouter();
   const { clearPasswordRecovery } = useAuth();
@@ -78,7 +80,14 @@ export default function ResetPassword() {
   }
 
   return (
-    <View className="flex-1 justify-center gap-4 bg-cotto-dark px-6">
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", gap: 16, paddingHorizontal: 24, paddingBottom: keyboard.keyboardHeight }}
+    >
       <Text className="mb-2 text-2xl font-bold text-white">Set a new password</Text>
 
       <Controller
@@ -106,6 +115,6 @@ export default function ResetPassword() {
       >
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Update password</Text>}
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }

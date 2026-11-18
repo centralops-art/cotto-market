@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../../src/lib/supabase";
 import { invokeFunction } from "../../../src/lib/invoke-function";
 import { clearCart, useCartItems, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
@@ -53,6 +54,7 @@ function addDaysYMD({ year, month, day }: { year: number; month: number; day: nu
 const DAY_LABELS = ["Today", "Tomorrow"];
 
 export default function Cart() {
+  const keyboard = useKeyboardAwareScroll();
   const router = useRouter();
   const cartQuery = useOpenCart();
   const itemsQuery = useCartItems(cartQuery.data?.id);
@@ -211,7 +213,14 @@ export default function Cart() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 96, gap: 20 }}>
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 96 + keyboard.keyboardHeight, gap: 20 }}
+    >
       <View className="flex-row items-center justify-between">
         <Text className="text-2xl font-bold text-white">Cart</Text>
         {vendorGroups.length > 0 &&

@@ -2,11 +2,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { completeProfile, completeProfileSchema, TERMS_URL, PRIVACY_URL, type CompleteProfileInput } from "@cotto/shared";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput } from "react-native";
+import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 import { useAuth } from "../../src/lib/auth-context";
 
 export default function CompleteProfile() {
+  const keyboard = useKeyboardAwareScroll();
   const { session, refreshProfile } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const {
@@ -27,7 +29,14 @@ export default function CompleteProfile() {
   }
 
   return (
-    <View className="flex-1 justify-center gap-4 bg-cotto-dark px-6">
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center", gap: 16, paddingHorizontal: 24, paddingBottom: keyboard.keyboardHeight }}
+    >
       <Text className="mb-2 text-2xl font-bold text-white">One more thing</Text>
       <Text className="mb-2 text-white/70">We need a phone number so vendors can reach you about your orders.</Text>
 
@@ -76,6 +85,6 @@ export default function CompleteProfile() {
       >
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Continue</Text>}
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }

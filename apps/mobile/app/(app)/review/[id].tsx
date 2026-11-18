@@ -3,12 +3,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { uploadReviewImage } from "../../../src/lib/upload-image";
 import { StarRating } from "../../../src/components/star-rating";
 
 export default function LeaveReview() {
+  const keyboard = useKeyboardAwareScroll();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { profile } = useAuth();
@@ -188,7 +190,14 @@ export default function LeaveReview() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 48, gap: 20 }}>
+    <ScrollView
+      ref={keyboard.scrollRef}
+      onScroll={keyboard.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      className="flex-1 bg-cotto-dark"
+      contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 48 + keyboard.keyboardHeight, gap: 20 }}
+    >
       <Pressable onPress={() => router.back()}>
         <Text className="text-white/60">&larr; Back</Text>
       </Pressable>
