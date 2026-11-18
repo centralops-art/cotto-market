@@ -2,7 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { completeProfile, completeProfileSchema, TERMS_URL, PRIVACY_URL, type CompleteProfileInput } from "@cotto/shared";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput } from "react-native";
 import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 import { useAuth } from "../../src/lib/auth-context";
