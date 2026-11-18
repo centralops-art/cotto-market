@@ -237,6 +237,7 @@ Deno.serve(async (req) => {
       deliveryAddress: DeliveryAddress | null;
       subtotalCents: number;
       deliveryFeeCents: number;
+      deliveryMiles: number | null;
       platformFeeCents: number;
       vendorPayoutCents: number;
       taxCents: number;
@@ -254,6 +255,7 @@ Deno.serve(async (req) => {
 
       const fulfillment = fulfillments[vendorId];
       let deliveryFeeCents = 0;
+      let deliveryMiles: number | null = null;
       let pickupAt: string | null = null;
       let deliveryAddress: DeliveryAddress | null = null;
       let taxAddress: { line1: string; city: string; state: string; zip: string };
@@ -294,6 +296,7 @@ Deno.serve(async (req) => {
         const distanceMeters = directions.routes?.[0]?.distance;
         if (typeof distanceMeters !== "number") throw new Error("Mapbox Directions returned no route");
         const oneWayMiles = metersToMiles(distanceMeters);
+        deliveryMiles = oneWayMiles;
         deliveryFeeCents = calculateDeliveryFeeCents(
           {
             baseDeliveryFeeCents: region.base_delivery_fee_cents,
@@ -333,6 +336,7 @@ Deno.serve(async (req) => {
         deliveryAddress,
         subtotalCents,
         deliveryFeeCents,
+        deliveryMiles,
         platformFeeCents,
         vendorPayoutCents: subtotalCents - platformFeeCents,
         taxCents: vendorTaxCents,
@@ -433,6 +437,8 @@ Deno.serve(async (req) => {
         fulfillment: plan.fulfillment,
         subtotalCents: plan.subtotalCents,
         deliveryFeeCents: plan.deliveryFeeCents,
+        // One-way kitchen-to-customer driving distance, rounded to 0.1 mi for display.
+        deliveryMiles: plan.deliveryMiles === null ? null : Math.round(plan.deliveryMiles * 10) / 10,
         taxCents: plan.taxCents,
       })),
       subtotalCents: totalSubtotalCents,

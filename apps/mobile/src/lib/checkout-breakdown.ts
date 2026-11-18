@@ -9,6 +9,8 @@ export interface CheckoutVendorBreakdown {
   fulfillment: "pickup" | "delivery";
   subtotalCents: number;
   deliveryFeeCents: number;
+  /** One-way kitchen-to-customer driving distance in miles (0.1 mi precision); null for pickup. */
+  deliveryMiles: number | null;
   taxCents: number;
 }
 
@@ -30,12 +32,19 @@ function parseVendor(value: unknown): CheckoutVendorBreakdown | null {
   if (typeof v.vendorId !== "string" || typeof v.vendorName !== "string") return null;
   if (v.fulfillment !== "pickup" && v.fulfillment !== "delivery") return null;
   if (!isCents(v.subtotalCents) || !isCents(v.deliveryFeeCents) || !isCents(v.taxCents)) return null;
+  // Distance is display-only, so a missing or malformed value just hides it
+  // rather than rejecting the whole breakdown.
+  const deliveryMiles =
+    typeof v.deliveryMiles === "number" && Number.isFinite(v.deliveryMiles) && v.deliveryMiles >= 0
+      ? v.deliveryMiles
+      : null;
   return {
     vendorId: v.vendorId,
     vendorName: v.vendorName,
     fulfillment: v.fulfillment,
     subtotalCents: v.subtotalCents,
     deliveryFeeCents: v.deliveryFeeCents,
+    deliveryMiles,
     taxCents: v.taxCents,
   };
 }
@@ -57,6 +66,11 @@ export function parseCheckoutBreakdown(value: unknown): CheckoutBreakdown | null
     taxCents: b.taxCents,
     totalCents: b.totalCents,
   };
+}
+
+/** "3.2 mi", or "0.4 mi" for very short trips. */
+export function formatDeliveryMiles(miles: number): string {
+  return `${miles.toFixed(1)} mi`;
 }
 
 /** Parses the JSON string passed to the checkout screen as a route param. */

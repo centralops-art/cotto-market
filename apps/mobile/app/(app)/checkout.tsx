@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useAuth } from "../../src/lib/auth-context";
-import { parseCheckoutBreakdownParam } from "../../src/lib/checkout-breakdown";
+import { formatDeliveryMiles, parseCheckoutBreakdownParam } from "../../src/lib/checkout-breakdown";
 
 function Row({ label, value, bold = false }: { label: string; value: string; bold?: boolean }) {
   return (
@@ -74,7 +74,12 @@ export default function Checkout() {
               {multiVendor && <Text className="font-semibold text-white">{v.vendorName}</Text>}
               <Row label="Food subtotal" value={formatCents(v.subtotalCents)} />
               {v.fulfillment === "delivery" ? (
-                <Row label="Delivery fee" value={formatCents(v.deliveryFeeCents)} />
+                <Row
+                  label={
+                    v.deliveryMiles === null ? "Delivery fee" : `Delivery fee (${formatDeliveryMiles(v.deliveryMiles)})`
+                  }
+                  value={formatCents(v.deliveryFeeCents)}
+                />
               ) : (
                 <Row label="Pickup" value="Free" />
               )}
