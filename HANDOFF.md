@@ -3653,4 +3653,30 @@ Stripe's PaymentSheet shows only the grand total.
 
 **Deployed:** `checkout-create-payment-intent` version 11 on hosted
 (2026-11-17), before merge. **Founder gate test passed on the dev client
-(2026-11-17).** Testers get the new screen with the next EAS build.
+(2026-11-17).** Merged as PR #44 (`0e9a0d0`).
+
+---
+
+## 37. Production builds iOS 9 / Android vc 7 (2026-11-17)
+
+Built from `0e9a0d0` (keyboard fix §34 + checkout fee breakdown §36, on
+top of the §33 iOS crash fix), in the `../cotto-build` worktree (detached
+at `origin/main`, `credentials/` already present). Pre-build:
+`expo install --fix` (no changes), `expo-doctor` 21/21, all 5
+`EXPO_PUBLIC_*` vars present in EAS production env.
+`eas build --profile production --platform all --non-interactive
+--auto-submit --no-wait`, 10:09 PM:
+- Android vc 7 → Play internal track, build
+  `d3408e61-0212-4428-bd1d-b3237eefb3cc`.
+- iOS 1.0.0 (9) → TestFlight, build
+  `27435c9f-9981-4ad9-bca0-e46b740146b9` (add it to the TestFlight group
+  manually, same as §27).
+
+**Result:** both builds FINISHED (10:25 PM); auto-submit was scheduled for
+both. eas-cli 27.5.0 has no command to read submission status, and the
+expo.dev submission pages need a login, so submission success wasn't
+confirmed from here; check expo.dev, Play Console and App Store Connect.
+
+**Not yet done:** confirm iOS opens on an iPhone (builds 8 and 9 have
+never been opened; founder is waiting on Apple approving an external
+test group), then run §35's gate-test list on these builds.
