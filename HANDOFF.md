@@ -98,7 +98,8 @@ it's tested via Expo dev client + EAS builds.
   helpers (`chicagoWallTimeToUTC`, `chicagoPartsOf`, `generatePickupSlots`) — unit
   tested including winter/summer DST round-trips. **Reuse these, don't
   re-derive timezone math.**
-- **Stripe architecture: Separate Charges and Transfers.** One PaymentIntent on
+- **Stripe architecture: Separate Charges and Transfers** (**being replaced by
+  Direct charges, founder's decision 2026-11-22, see §39**). One PaymentIntent on
   the **platform** Stripe account per order (no `application_fee_amount`, no
   `transfer_data`/destination charge). Cook's Transfer fires from the
   `payment_intent.succeeded` webhook (amount = subtotal − platform fee). The
@@ -3723,3 +3724,62 @@ confirmed. Check expo.dev, App Store Connect and Play Console.
 
 **Not yet done:** tester retests signup on both builds (enter a phone
 number, tap Continue, should land in the app).
+
+---
+
+## 39. Planned: switch Stripe from Separate Charges and Transfers to Direct charges (2026-11-22, not started)
+
+**Founder's decision (2026-11-22):** move to Stripe **Direct charges** to
+reduce Cotto's tax exposure and admin overhead. This replaces the
+"Separate Charges and Transfers" decision in §3. (The founder's request
+said "from Destination"; the current setup was never destination charges.
+Cotto charges on its own account, then Transfers to cooks and drivers.)
+
+**Decided:** **one kitchen per checkout.** A direct charge lives on one
+cook's Stripe account, so a multi-kitchen cart can't be one charge. The
+cart stays multi-kitchen, but the customer checks out and pays each
+kitchen separately. Every new order has exactly one suborder.
+
+**Blocking, before any code: tax/legal sign-off (founder + tax advisor).**
+- Illinois's marketplace facilitator rules may make Cotto liable to
+  collect/remit tax because it runs the marketplace, regardless of Stripe
+  charge type. Confirm the switch actually moves the obligation.
+- Each cook becomes merchant of record: needs their own IL sales tax
+  registration and Stripe Tax (head office + IL registration) on their
+  own Stripe account, or tax calculates as $0 (same behavior as §3).
+- Cooks pay Stripe processing fees (~2.9% + 30c). Founder may want to
+  revisit the 8% platform fee.
+
+### Target design (keeps orders / vendor_suborders / order_items as-is)
+
+| Area | Today | Direct charges |
+|---|---|---|
+| Connect accounts | Express, Transfers in only | Full-dashboard accounts (Standard, or controller properties: account pays Stripe fees, Stripe/account liable for losses). On Express the platform stays liable for refunds/disputes. Re-onboarding is already required for live mode (§23), so do both once. |
+| Checkout (`checkout-create-payment-intent`) | One platform PI for the whole cart | Request adds `vendorId`. Only that kitchen's cart items are priced. One PI created with the `Stripe-Account` header = cook's account, `application_fee_amount` = platform fee + delivery fee. Pricing math and `breakdown` unchanged. |
+| Tax (`_shared/stripe-tax.ts`, admin refund route) | Calculations/transactions on platform | Same calls with `stripeAccount` = suborder's snapshotted account. |
+| Webhook | Platform endpoint; fires cook Transfer | Add a **Connect** webhook endpoint (`connect: true`, own signing secret). Cook Transfer removed. Verify `event.account` equals the suborder's snapshotted account. Keep `processed_stripe_events` idempotency. |
+| Cart after payment | Whole cart → `checked_out` | Delete only the paid kitchen's `cart_items`. Cart → `checked_out` only when empty. `orders_cart_id_pending_unique` stays (one pending checkout per cart; starting kitchen B cancels a pending A, same as today's stale-order path). |
+| Refunds (`_shared/refund-suborder.ts`, admin `orders/[id]/refund`, `resolve-delivery-offer`) | Refund + `transfers.createReversal` | Refund on the cook's account with `refund_application_fee: true`. Delivery-fee-only refund (§19): refund that amount and `applicationFees.createRefund` for the same amount. Keep the existing status-lock/compensate pattern. |
+| Driver payout (`update-delivery-status`) | Platform Transfer with `source_transaction` | Platform Transfer, no `source_transaction` (charge isn't on the platform). Application fees sit pending ~2 days, so early payouts can fail for insufficient funds. Add a retry cron for `delivery_transfer_failed`, and/or keep a platform balance buffer. |
+| Mobile (`checkout.tsx`, `_layout.tsx`, cart) | Platform publishable key only | Per-kitchen "Checkout" button. PaymentSheet initialised with the cook's `stripeAccountId` returned by the server. **Needs a new EAS build** (no OTA, §23). Server rejects old builds with an "update the app" message (send an app-version field). |
+
+### Data integrity / security rules
+- New migration: `vendor_suborders.stripe_account_id` (snapshot at
+  checkout), `stripe_payment_intent_id`, `stripe_application_fee_id`,
+  `charge_model` (`sct` | `direct`). Old columns stay. Pre-switch orders
+  keep refunding the old way (Transfer reversal), selected by `charge_model`.
+- Stripe account id always read server-side from `vendors`, never
+  accepted from the client. Every later call (webhook, refund, tax) uses the
+  snapshot, not the vendor's current account.
+- Existing guard trigger (0021) on owner edits to `stripe_account_id` stays.
+
+### Build order
+1. Tax sign-off (founder). **Blocking.**
+2. Migration (columns above).
+3. Onboarding: account type + Stripe Tax setup on connected accounts.
+4. Checkout function: per-kitchen, direct PI.
+5. Connect webhook endpoint + handler.
+6. Refund helper, admin refund route, delivery-offer refund.
+7. Driver payout change + retry cron.
+8. Mobile per-kitchen checkout + new EAS build, then gate test.
+9. Fold into the live-mode cutover (§23) so real cooks onboard once.
