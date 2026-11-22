@@ -3825,6 +3825,8 @@ advisor signed off). Build is unblocked.
     `vendor/payments` screen; dashboard shows a "Finish payments setup"
     banner until both are done.
   - Admin vendor page shows the account model and tax status.
+  - 0064 applied to hosted and the three functions deployed 2026-11-22;
+    `database.ts` regenerated.
   - **Known gap until all cooks re-onboard:** a driver who starts the new
     Stripe setup but doesn't finish has a new account without `transfers`
     active, so their delivery payout Transfer would fail. Only matters in
