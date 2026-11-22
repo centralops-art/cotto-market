@@ -1,8 +1,6 @@
-import * as WebBrowser from "expo-web-browser";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { supabase } from "../../lib/supabase";
-import { functionErrorMessage } from "../../lib/invoke-function";
+import { PaymentsSetup, type PaymentsStatus } from "../vendor-payments/payments-setup";
 
 interface Props {
   vendorId: string;
@@ -11,53 +9,11 @@ interface Props {
 }
 
 export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [detailsSubmitted, setDetailsSubmitted] = useState(false);
+  const [ready, setReady] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  async function connectWithStripe() {
-    setFormError(null);
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("stripe-connect-onboarding", {
-        body: { vendorId },
-      });
-      if (error) throw new Error(await functionErrorMessage(error));
-      if (data?.error) {
-        setFormError(data.error);
-        return;
-      }
-      await WebBrowser.openAuthSessionAsync(data.url, "cotto://vendor-onboarding");
-      await checkStatus();
-    } catch (err) {
-      setFormError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function checkStatus() {
-    setChecking(true);
-    setFormError(null);
-    try {
-      const { data, error } = await supabase.functions.invoke("stripe-connect-status", { body: { vendorId } });
-      if (error) throw new Error(await functionErrorMessage(error));
-      if (data?.error) {
-        setFormError(data.error);
-        return;
-      }
-      setDetailsSubmitted(!!data.detailsSubmitted);
-      if (!data.detailsSubmitted) {
-        setFormError("Stripe onboarding isn't finished yet. Complete it in the browser, then check again.");
-      }
-    } catch (err) {
-      setFormError((err as Error).message);
-    } finally {
-      setChecking(false);
-    }
-  }
+  const handleStatus = useCallback((_status: PaymentsStatus, isReady: boolean) => setReady(isReady), []);
 
   async function submitApplication() {
     setSubmitting(true);
@@ -73,26 +29,9 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
 
   return (
     <View className="gap-4">
-      <Text className="text-2xl font-bold text-white">Set up payouts</Text>
-      <Text className="text-white/70">
-        Stripe handles identity verification and bank details for both your cooking revenue and any delivery payouts.
-      </Text>
+      <Text className="text-2xl font-bold text-white">Set up payments</Text>
 
-      <Pressable
-        className="items-center rounded-lg border border-white/20 py-3 disabled:opacity-50"
-        disabled={loading}
-        onPress={connectWithStripe}
-      >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white">Connect with Stripe</Text>}
-      </Pressable>
-
-      <Pressable
-        className="items-center rounded-lg border border-white/20 py-3 disabled:opacity-50"
-        disabled={checking}
-        onPress={checkStatus}
-      >
-        {checking ? <ActivityIndicator color="#fff" /> : <Text className="text-white">I've finished -- check status</Text>}
-      </Pressable>
+      <PaymentsSetup vendorId={vendorId} onStatusChange={handleStatus} />
 
       {formError && <Text className="text-red-400">{formError}</Text>}
 
@@ -102,7 +41,7 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
         </Pressable>
         <Pressable
           className="flex-1 items-center rounded-lg bg-cotto-accent py-3 disabled:opacity-50"
-          disabled={submitting || !detailsSubmitted}
+          disabled={submitting || !ready}
           onPress={submitApplication}
         >
           {submitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Submit Application</Text>}

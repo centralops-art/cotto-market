@@ -1,6 +1,7 @@
-// Checks whether a vendor's Stripe Connect Express account has finished
-// onboarding, so the mobile app knows it's safe to submit for review after
-// the user returns from the hosted Stripe flow.
+// Reports a vendor's Stripe setup: whether they have a full-dashboard
+// account (§39 Direct charges), whether Stripe onboarding is finished, and
+// whether Stripe Tax is set up on their account. The mobile app uses it after
+// the user returns from the hosted Stripe flow and on the Payments screen.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -26,14 +27,29 @@ Deno.serve(async (req) => {
 
     const { data: vendor, error } = await supabase
       .from("vendors")
-      .select("stripe_account_id")
+      .select("stripe_account_id, stripe_account_model, il_tax_account_id, stripe_tax_ready_at")
       .eq("id", vendorId)
       .single();
-    if (error || !vendor?.stripe_account_id) {
-      return new Response(JSON.stringify({ error: "No Stripe account on file for this vendor" }), {
+    if (error || !vendor) {
+      return new Response(JSON.stringify({ error: "Vendor not found or not yours" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+    // No account, or an old Express account: the cook has to (re)do Stripe
+    // onboarding before they can take direct charges (§39).
+    if (!vendor.stripe_account_id || vendor.stripe_account_model !== "full") {
+      return new Response(
+        JSON.stringify({
+          hasAccount: false,
+          needsNewAccount: !!vendor.stripe_account_id,
+          detailsSubmitted: false,
+          chargesEnabled: false,
+          taxReady: false,
+          ilTaxAccountId: vendor.il_tax_account_id,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -47,7 +63,14 @@ Deno.serve(async (req) => {
     const account = await stripe.accounts.retrieve(vendor.stripe_account_id);
 
     return new Response(
-      JSON.stringify({ detailsSubmitted: account.details_submitted, chargesEnabled: account.charges_enabled }),
+      JSON.stringify({
+        hasAccount: true,
+        needsNewAccount: false,
+        detailsSubmitted: account.details_submitted,
+        chargesEnabled: account.charges_enabled,
+        taxReady: !!vendor.stripe_tax_ready_at,
+        ilTaxAccountId: vendor.il_tax_account_id,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

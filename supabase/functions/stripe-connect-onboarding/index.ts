@@ -1,4 +1,4 @@
-// Creates (or reuses) a Stripe Connect Express account for the calling
+// Creates (or reuses) a full-dashboard Stripe Connect account for the calling
 // vendor and returns a fresh onboarding Account Link URL. Requires the
 // STRIPE_SECRET_KEY secret (`supabase secrets set STRIPE_SECRET_KEY=sk_test_...`),
 // live since Phase 8's gate test.
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 
     const { data: vendor, error: vendorError } = await supabase
       .from("vendors")
-      .select("id, stripe_account_id, email, storefront_name")
+      .select("id, stripe_account_id, stripe_account_model, email, storefront_name")
       .eq("id", vendorId)
       .single();
     if (vendorError || !vendor) {
@@ -55,38 +55,43 @@ Deno.serve(async (req) => {
     }
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    let accountId = vendor.stripe_account_id;
+    // Only a full-dashboard account is reused. A vendor on an old Express
+    // account (or none) gets a new one; Express can't be converted.
+    let accountId = vendor.stripe_account_model === "full" ? vendor.stripe_account_id : null;
     if (!accountId) {
       const account = await stripe.accounts.create({
-        type: "express",
+        country: "US",
         email: vendor.email ?? undefined,
         business_profile: { name: vendor.storefront_name },
-        // Same Connect account is used for both cooking revenue and delivery
-        // payouts (spec 3.1) -- separate Transfers, not destination charges,
-        // so the connected account only ever RECEIVES transfers and never
-        // processes a card charge itself. `card_payments` is requested
-        // anyway: Stripe requires platform approval to request `transfers`
-        // WITHOUT `card_payments` (confirmed via a direct API test), so
-        // omitting it just trades one manual Stripe approval step for
-        // another with no benefit -- the capability sits unused either way.
-        capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
-        // Explicit payout hold (not just relying on Stripe's default) so a
-        // refund can reverse the vendor's Transfer (see stripe-webhook's
-        // refund handling) before the payout has actually left their Connect
-        // balance. 2 is the platform-enforced minimum for a US Express
-        // account (confirmed via a direct API test -- delay_days: 1 is
-        // rejected outright), which already exceeds the 24h this needs to
-        // cover; setting it explicitly means it doesn't silently depend on
-        // Stripe's current default never changing.
-        settings: { payouts: { schedule: { interval: "daily", delay_days: 2 } } },
+        // Direct charges (§39): full Stripe dashboard, the cook pays Stripe
+        // fees, and Stripe/the cook (not Cotto) covers losses. Confirmed in
+        // test mode 2026-11-22: Stripe reports these as type "standard".
+        controller: {
+          fees: { payer: "account" },
+          losses: { payments: "stripe" },
+          stripe_dashboard: { type: "full" },
+          requirement_collection: "stripe",
+        },
+        // card_payments for the cook's direct food charges; transfers for
+        // delivery payouts (every driver is also a vendor, so one account
+        // receives both). The payout schedule is the cook's own to set.
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+        metadata: { vendor_id: vendor.id },
       });
       accountId = account.id;
 
-      // service role: bypass RLS to write stripe_account_id (not owner-editable per the guard trigger's intent for admin-managed fields, but this one is set by the system, not the vendor, so a service-role write here is correct).
+      // Service role: the vendor UPDATE guard (0064) makes these columns
+      // server-only. A new account has no Stripe Tax setup yet, so the tax
+      // columns reset and the cook redoes stripe-connect-tax-setup.
       const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       const { error: updateError } = await serviceClient
         .from("vendors")
-        .update({ stripe_account_id: accountId })
+        .update({
+          stripe_account_id: accountId,
+          stripe_account_model: "full",
+          stripe_tax_registration_id: null,
+          stripe_tax_ready_at: null,
+        })
         .eq("id", vendorId);
       if (updateError) throw updateError;
     }

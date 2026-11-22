@@ -1210,6 +1210,7 @@ export type Database = {
           free_trial_ends_at: string | null
           header_image_url: string | null
           hours: Json
+          il_tax_account_id: string | null
           id: string
           lat: number | null
           layout_style: Database["public"]["Enums"]["layout_style"]
@@ -1227,6 +1228,9 @@ export type Database = {
           state: string | null
           status: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
+          stripe_account_model: string | null
+          stripe_tax_ready_at: string | null
+          stripe_tax_registration_id: string | null
           stripe_account_id: string | null
           suspended_reason: string | null
           tagline: string | null
@@ -1250,6 +1254,7 @@ export type Database = {
           free_trial_ends_at?: string | null
           header_image_url?: string | null
           hours?: Json
+          il_tax_account_id?: string | null
           id?: string
           lat?: number | null
           layout_style?: Database["public"]["Enums"]["layout_style"]
@@ -1267,6 +1272,9 @@ export type Database = {
           state?: string | null
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
+          stripe_account_model?: string | null
+          stripe_tax_ready_at?: string | null
+          stripe_tax_registration_id?: string | null
           stripe_account_id?: string | null
           suspended_reason?: string | null
           tagline?: string | null
@@ -1290,6 +1298,7 @@ export type Database = {
           free_trial_ends_at?: string | null
           header_image_url?: string | null
           hours?: Json
+          il_tax_account_id?: string | null
           id?: string
           lat?: number | null
           layout_style?: Database["public"]["Enums"]["layout_style"]
@@ -1307,6 +1316,9 @@ export type Database = {
           state?: string | null
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name?: string
+          stripe_account_model?: string | null
+          stripe_tax_ready_at?: string | null
+          stripe_tax_registration_id?: string | null
           stripe_account_id?: string | null
           suspended_reason?: string | null
           tagline?: string | null
