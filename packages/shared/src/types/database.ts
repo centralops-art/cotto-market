@@ -648,6 +648,7 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"]
           sms_opt_in: boolean
           status: Database["public"]["Enums"]["profile_status"]
+          stripe_customer_id: string | null
           suspended_reason: string | null
           updated_at: string
           username: string | null
@@ -662,6 +663,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"]
           sms_opt_in?: boolean
           status?: Database["public"]["Enums"]["profile_status"]
+          stripe_customer_id?: string | null
           suspended_reason?: string | null
           updated_at?: string
           username?: string | null
@@ -676,6 +678,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"]
           sms_opt_in?: boolean
           status?: Database["public"]["Enums"]["profile_status"]
+          stripe_customer_id?: string | null
           suspended_reason?: string | null
           updated_at?: string
           username?: string | null
@@ -957,6 +960,7 @@ export type Database = {
       }
       vendor_suborders: {
         Row: {
+          charge_model: string
           created_at: string
           delivery_address: Json | null
           delivery_cycle: number
@@ -964,6 +968,7 @@ export type Database = {
           delivery_instructions: string | null
           delivery_lat: number | null
           delivery_lng: number | null
+          delivery_payment_intent_id: string | null
           fulfillment: Database["public"]["Enums"]["fulfillment_type"]
           id: string
           mapbox_eta_minutes: number | null
@@ -972,11 +977,14 @@ export type Database = {
           platform_fee_cents: number
           ready_at: string | null
           status: Database["public"]["Enums"]["suborder_status"]
-          stripe_transfer_id: string | null
-          stripe_transfer_reversal_id: string | null
+          stripe_account_id: string | null
+          stripe_application_fee_id: string | null
+          stripe_payment_intent_id: string | null
           stripe_tax_calculation_id: string | null
           stripe_tax_reversal_id: string | null
           stripe_tax_transaction_id: string | null
+          stripe_transfer_id: string | null
+          stripe_transfer_reversal_id: string | null
           subtotal_cents: number
           tax_cents: number
           updated_at: string
@@ -984,6 +992,7 @@ export type Database = {
           vendor_payout_cents: number
         }
         Insert: {
+          charge_model?: string
           created_at?: string
           delivery_address?: Json | null
           delivery_cycle?: number
@@ -991,6 +1000,7 @@ export type Database = {
           delivery_instructions?: string | null
           delivery_lat?: number | null
           delivery_lng?: number | null
+          delivery_payment_intent_id?: string | null
           fulfillment: Database["public"]["Enums"]["fulfillment_type"]
           id?: string
           mapbox_eta_minutes?: number | null
@@ -999,11 +1009,14 @@ export type Database = {
           platform_fee_cents?: number
           ready_at?: string | null
           status?: Database["public"]["Enums"]["suborder_status"]
-          stripe_transfer_id?: string | null
-          stripe_transfer_reversal_id?: string | null
+          stripe_account_id?: string | null
+          stripe_application_fee_id?: string | null
+          stripe_payment_intent_id?: string | null
           stripe_tax_calculation_id?: string | null
           stripe_tax_reversal_id?: string | null
           stripe_tax_transaction_id?: string | null
+          stripe_transfer_id?: string | null
+          stripe_transfer_reversal_id?: string | null
           subtotal_cents: number
           tax_cents?: number
           updated_at?: string
@@ -1011,6 +1024,7 @@ export type Database = {
           vendor_payout_cents?: number
         }
         Update: {
+          charge_model?: string
           created_at?: string
           delivery_address?: Json | null
           delivery_cycle?: number
@@ -1018,6 +1032,7 @@ export type Database = {
           delivery_instructions?: string | null
           delivery_lat?: number | null
           delivery_lng?: number | null
+          delivery_payment_intent_id?: string | null
           fulfillment?: Database["public"]["Enums"]["fulfillment_type"]
           id?: string
           mapbox_eta_minutes?: number | null
@@ -1026,11 +1041,14 @@ export type Database = {
           platform_fee_cents?: number
           ready_at?: string | null
           status?: Database["public"]["Enums"]["suborder_status"]
-          stripe_transfer_id?: string | null
-          stripe_transfer_reversal_id?: string | null
+          stripe_account_id?: string | null
+          stripe_application_fee_id?: string | null
+          stripe_payment_intent_id?: string | null
           stripe_tax_calculation_id?: string | null
           stripe_tax_reversal_id?: string | null
           stripe_tax_transaction_id?: string | null
+          stripe_transfer_id?: string | null
+          stripe_transfer_reversal_id?: string | null
           subtotal_cents?: number
           tax_cents?: number
           updated_at?: string
