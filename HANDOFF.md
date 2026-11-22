@@ -3740,6 +3740,30 @@ cook's Stripe account, so a multi-kitchen cart can't be one charge. The
 cart stays multi-kitchen, but the customer checks out and pays each
 kitchen separately. Every new order has exactly one suborder.
 
+**Decided (2026-11-22): the delivery fee is its own charge on Cotto's
+platform account, separate from the food charge.** Cotto sells the
+delivery service; the cook sells the food. Reasons: a bundled delivery
+(§40) spans several kitchens' food charges, so its fee can't ride on any
+one of them; and the driver payout can keep using `source_transaction`
+against a platform charge (no 2-day application-fee hold). Pickup orders
+have no delivery charge and are a plain direct charge.
+
+Delivery-order payment flow (card entered once):
+1. Server creates the platform delivery PI with `capture_method: manual`
+   and a platform Customer (`setup_future_usage: on_session`), plus the
+   pending order/suborder rows. Returns its client secret.
+2. App confirms it with PaymentSheet (platform account): the card is
+   authorized, not captured, and saved to the platform Customer.
+3. App calls the server, which clones the saved PaymentMethod to the
+   cook's connected account (`paymentMethods.create` with `customer` +
+   `payment_method`, `stripeAccount` header) and creates + confirms the
+   food PI there. If Stripe asks for 3DS, the app handles that step with
+   the cook's `stripeAccountId`.
+4. Food succeeds → capture the delivery PI. Food fails → cancel the
+   delivery authorization. The customer is never charged for delivery
+   without food. A cron cancels delivery authorizations left uncaptured
+   (abandoned at step 3) after a short timeout.
+
 **Blocking, before any code: tax/legal sign-off (founder + tax advisor).**
 - Illinois's marketplace facilitator rules may make Cotto liable to
   collect/remit tax because it runs the marketplace, regardless of Stripe
@@ -3749,24 +3773,29 @@ kitchen separately. Every new order has exactly one suborder.
   own Stripe account, or tax calculates as $0 (same behavior as §3).
 - Cooks pay Stripe processing fees (~2.9% + 30c). Founder may want to
   revisit the 8% platform fee.
+- Cotto now sells delivery as its own service, charged separately. Ask
+  the advisor whether separately charged delivery is taxable in IL
+  (today it is treated as non-taxable, §3), and whether Cotto needs to
+  report it.
 
 ### Target design (keeps orders / vendor_suborders / order_items as-is)
 
 | Area | Today | Direct charges |
 |---|---|---|
 | Connect accounts | Express, Transfers in only | Full-dashboard accounts (Standard, or controller properties: account pays Stripe fees, Stripe/account liable for losses). On Express the platform stays liable for refunds/disputes. Re-onboarding is already required for live mode (§23), so do both once. |
-| Checkout (`checkout-create-payment-intent`) | One platform PI for the whole cart | Request adds `vendorId`. Only that kitchen's cart items are priced. One PI created with the `Stripe-Account` header = cook's account, `application_fee_amount` = platform fee + delivery fee. Pricing math and `breakdown` unchanged. |
+| Checkout (`checkout-create-payment-intent`) | One platform PI for the whole cart | Request adds `vendorId`. Only that kitchen's cart items are priced. Food PI created with the `Stripe-Account` header = cook's account, `application_fee_amount` = platform fee only, amount = subtotal + tax. Delivery orders also get the platform delivery PI (flow above). Pricing math and `breakdown` unchanged. |
 | Tax (`_shared/stripe-tax.ts`, admin refund route) | Calculations/transactions on platform | Same calls with `stripeAccount` = suborder's snapshotted account. |
-| Webhook | Platform endpoint; fires cook Transfer | Add a **Connect** webhook endpoint (`connect: true`, own signing secret). Cook Transfer removed. Verify `event.account` equals the suborder's snapshotted account. Keep `processed_stripe_events` idempotency. |
+| Webhook | Platform endpoint; fires cook Transfer | Add a **Connect** webhook endpoint (`connect: true`, own signing secret) for food PIs. Verify `event.account` equals the suborder's snapshotted account. The existing platform endpoint keeps handling the delivery PI (`payment_intent.amount_capturable_updated`, `succeeded`, `canceled`). Cook Transfer removed. Order is `paid` only when the food PI succeeded and (for delivery) the delivery PI is captured. Keep `processed_stripe_events` idempotency. |
 | Cart after payment | Whole cart → `checked_out` | Delete only the paid kitchen's `cart_items`. Cart → `checked_out` only when empty. `orders_cart_id_pending_unique` stays (one pending checkout per cart; starting kitchen B cancels a pending A, same as today's stale-order path). |
-| Refunds (`_shared/refund-suborder.ts`, admin `orders/[id]/refund`, `resolve-delivery-offer`) | Refund + `transfers.createReversal` | Refund on the cook's account with `refund_application_fee: true`. Delivery-fee-only refund (§19): refund that amount and `applicationFees.createRefund` for the same amount. Keep the existing status-lock/compensate pattern. |
-| Driver payout (`update-delivery-status`) | Platform Transfer with `source_transaction` | Platform Transfer, no `source_transaction` (charge isn't on the platform). Application fees sit pending ~2 days, so early payouts can fail for insufficient funds. Add a retry cron for `delivery_transfer_failed`, and/or keep a platform balance buffer. |
-| Mobile (`checkout.tsx`, `_layout.tsx`, cart) | Platform publishable key only | Per-kitchen "Checkout" button. PaymentSheet initialised with the cook's `stripeAccountId` returned by the server. **Needs a new EAS build** (no OTA, §23). Server rejects old builds with an "update the app" message (send an app-version field). |
+| Refunds (`_shared/refund-suborder.ts`, admin `orders/[id]/refund`, `resolve-delivery-offer`) | Refund + `transfers.createReversal` | Food: refund on the cook's account with `refund_application_fee: true`. Delivery: refund the platform delivery PI. A full suborder refund does both. Delivery-fee-only refund (§19 "switch to pickup") refunds only the delivery PI, which is simpler than today. Keep the existing status-lock/compensate pattern. |
+| Driver payout (`update-delivery-status`) | Platform Transfer with `source_transaction` | Unchanged in shape: platform Transfer with `source_transaction` = the delivery PI's charge. |
+| Mobile (`checkout.tsx`, `_layout.tsx`, cart) | Platform publishable key only | Per-kitchen "Checkout" button. Delivery orders: PaymentSheet on the platform account (delivery authorization + saved card), then a server call that charges the food; 3DS on the food charge uses the cook's `stripeAccountId`. Pickup orders: PaymentSheet initialised with the cook's `stripeAccountId`. **Needs a new EAS build** (no OTA, §23). Server rejects old builds with an "update the app" message (send an app-version field). |
 
 ### Data integrity / security rules
 - New migration: `vendor_suborders.stripe_account_id` (snapshot at
   checkout), `stripe_payment_intent_id`, `stripe_application_fee_id`,
-  `charge_model` (`sct` | `direct`). Old columns stay. Pre-switch orders
+  `charge_model` (`sct` | `direct`), `delivery_payment_intent_id`, plus
+  `profiles.stripe_customer_id` (platform Customer). Old columns stay. Pre-switch orders
   keep refunding the old way (Transfer reversal), selected by `charge_model`.
 - Stripe account id always read server-side from `vendors`, never
   accepted from the client. Every later call (webhook, refund, tax) uses the
@@ -3777,9 +3806,70 @@ kitchen separately. Every new order has exactly one suborder.
 1. Tax sign-off (founder). **Blocking.**
 2. Migration (columns above).
 3. Onboarding: account type + Stripe Tax setup on connected accounts.
-4. Checkout function: per-kitchen, direct PI.
-5. Connect webhook endpoint + handler.
+4. Checkout: per-kitchen food PI on the cook's account; platform
+   delivery PI (authorize, then capture or cancel); abandoned-authorization
+   cleanup cron.
+5. Connect webhook endpoint + handler; platform webhook handles delivery PI.
 6. Refund helper, admin refund route, delivery-offer refund.
-7. Driver payout change + retry cron.
+7. Driver payout: point `source_transaction` at the delivery charge.
 8. Mobile per-kitchen checkout + new EAS build, then gate test.
 9. Fold into the live-mode cutover (§23) so real cooks onboard once.
+
+---
+
+## 40. Planned: bundled delivery (2026-11-22, not started; build after §39)
+
+**Founder's idea:** a customer orders from several kitchens and one driver
+picks up from all of them and delivers once. Billing distance comes from a
+single route that visits kitchens from farthest-from-customer to closest,
+then the customer. The customer pays an extra per-stop fee. The driver/Cotto
+split stays the region's `delivery_payout_split_pct` (80/20 today, set in
+admin), locked at claim time as now.
+
+**Depends on §39's separate delivery charge.** The bundle has one platform
+delivery PI for the whole bundle fee. Checkout, with the card entered once:
+1. Customer builds the bundle in the cart, before paying anything. Server
+   prices the route and stops.
+2. PaymentSheet authorizes the full bundle fee on the platform and saves the
+   card.
+3. Server charges each kitchen's food on that cook's account with the cloned
+   card.
+4. If one kitchen's food charge fails, drop that stop, re-price, and capture
+   the lower amount (partial capture of an authorization is allowed). If all
+   fail, cancel.
+
+### Open decisions (founder, before any code)
+- Stop cap (suggest 3) and/or max route miles.
+- Is the 5-mile free radius applied once per bundle?
+- Per-stop fee: charged for each stop after the first? Does it go through
+  the 80/20 split too (assumed yes)?
+- When a bundle becomes claimable: only when every kitchen is `ready`
+  (safer for food), or as soon as the first is?
+- Refund rule if one kitchen in a bundle is cancelled/refunded after
+  payment: re-price without that stop and refund the difference; adjust
+  the driver payout if not yet paid.
+- No-driver fallback (§19 T2 offer): one pickup-or-refund choice for the
+  whole bundle, or per kitchen?
+
+### Technical challenges
+- **New `delivery_bundles` table** above suborders (customer, address,
+  region, ordered stops, billed miles, fee breakdown, delivery PI id,
+  status). `vendor_suborders.delivery_bundle_id`. Snapshot the route and
+  price at creation so later region-setting changes don't rewrite history.
+- **Claims:** `delivery_claims` is one active claim per suborder (0007).
+  A bundle needs one claim per bundle, taken atomically for all its
+  suborders (all or nothing) in the `claim_delivery` RPC.
+- **Fallback timers and watchdog:** `cron-unclaimed-delivery-check` (T1/T2/T3)
+  and `cron-stuck-delivery-watchdog` count per suborder from `ready_at`;
+  both need bundle-level timing. The 20-minute stuck threshold is too short
+  for a multi-stop run.
+- **Route:** "farthest first" can zig-zag (kitchens equally far in opposite
+  directions). Use it for billing (predictable, explainable); let the
+  driver choose their own driving order. One Mapbox Directions call with
+  all waypoints. New route-based fee function in `packages/shared/src/fees.ts`,
+  duplicated in the edge function (Deno quirk, §5).
+- **Security:** bundle built server-side only. Every suborder must belong to
+  the same customer, the same address and region, and be paid.
+- **Mobile:** multi-stop driver screen (per-stop "picked up"), one
+  customer tracking view for several orders, bundle option in the cart.
+  New EAS build.
