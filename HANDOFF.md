@@ -3908,6 +3908,17 @@ advisor signed off). Build is unblocked.
   `source_transaction` for direct orders (old orders: the order's PI).
   Payout amount and the 80/20 split are unchanged.
   - Steps 4-7 handle direct orders end to end.
+  - **Found 2026-11-22 while testing T2: no scheduled job has ever run on
+    the hosted project.** `vault.secrets` was empty, so every pg_cron job
+    (0014/0034/0040/0045/0048/vendor-trial/0065) failed with `null value
+    in column "url" of relation "http_request_queue"`. The one-time Vault
+    setup in 0014's header (`project_url`, `service_role_key`) was never
+    done on hosted. Earlier gate tests must have triggered the crons by
+    hand. Fix: founder adds both Vault secrets (the legacy `service_role`
+    JWT, not an `sb_secret_` key, since the functions verify JWTs). Check
+    with `cron.job_run_details` afterwards. Also redeployed
+    `cron-unclaimed-delivery-check`, which still bundled the pre-step-6
+    `refund-suborder.ts`.
   - **Deployed to the test backend 2026-11-22:** migration 0065 applied;
     `stripe-connect-webhook` and `stripe-webhook` deployed with
     `--no-verify-jwt`; `checkout-create-payment-intent`,
