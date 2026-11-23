@@ -15,8 +15,8 @@ type CompleteResult =
 
 function Row({ label, value, bold = false }: { label: string; value: string; bold?: boolean }) {
   return (
-    <View className="flex-row justify-between">
-      <Text className={bold ? "font-bold text-white" : "text-white/70"}>{label}</Text>
+    <View className="flex-row justify-between gap-3">
+      <Text className={bold ? "flex-1 font-bold text-white" : "flex-1 text-white/70"}>{label}</Text>
       <Text className={bold ? "font-bold text-white" : "text-white"}>{value}</Text>
     </View>
   );

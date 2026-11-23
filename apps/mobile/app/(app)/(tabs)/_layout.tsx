@@ -1,18 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
 import { Tabs } from "expo-router";
+import { useWindowDimensions } from "react-native";
 import type { BottomTabBarButtonProps } from "expo-router/build/react-navigation/bottom-tabs";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { AwningTabButton } from "../../../src/components/awning-tab-button";
+import { tabLabelSize } from "../../../src/lib/tab-label-size";
 
 /** Fixed per-screen so hiding a tab can't shift another tab's color at
  * runtime -- see awning-tab-button.tsx. */
-function awningButton(cupColor: "red" | "cream", label: string, visible = true) {
-  return (props: BottomTabBarButtonProps) => <AwningTabButton {...props} cupColor={cupColor} label={label} visible={visible} />;
+function makeAwningButton(labelSize: number) {
+  return function awningButton(cupColor: "red" | "cream", label: string, visible = true) {
+    return (props: BottomTabBarButtonProps) => (
+      <AwningTabButton {...props} cupColor={cupColor} label={label} labelSize={labelSize} visible={visible} />
+    );
+  };
 }
 
 export default function TabsLayout() {
   const { session } = useAuth();
+  const { width } = useWindowDimensions();
 
   // Kitchen tab only shows for profiles that own an active vendor -- a
   // draft/pending/suspended vendor never receives orders, so the tab would
@@ -50,6 +57,10 @@ export default function TabsLayout() {
     },
   });
   const showDeliveriesTab = deliveryStatusQuery.data?.vendor_delivery_profiles?.status === "delivery_active";
+
+  // Browse, Orders, Favorites, Cart and Account are always shown.
+  const visibleTabs = 5 + (showKitchenTab ? 1 : 0) + (showDeliveriesTab ? 1 : 0);
+  const awningButton = makeAwningButton(tabLabelSize(width, visibleTabs));
 
   return (
     <Tabs

@@ -360,7 +360,7 @@ export default function Deliveries() {
       <Text className="text-2xl font-bold text-white">Deliveries</Text>
 
       <View className="flex-row items-center justify-between rounded-lg bg-white/5 p-4">
-        <View>
+        <View className="flex-1 pr-3">
           <Text className="font-semibold text-white">Delivery Mode</Text>
           <Text className="text-sm text-white/60">{profile?.on_duty ? "On -- visible in the pool" : "Off"}</Text>
         </View>
@@ -392,7 +392,7 @@ export default function Deliveries() {
         </View>
       )}
 
-      <View className="flex-row gap-2">
+      <View className="flex-row flex-wrap gap-2">
         {(["available", "queue", "history"] as Tab[]).map((t) => (
           <Pressable
             key={t}
@@ -426,8 +426,8 @@ export default function Deliveries() {
         ) : (
           cards.map((card) => (
             <View key={card.id} className="gap-2 rounded-lg bg-white/5 p-4">
-              <View className="flex-row items-center justify-between">
-                <Text className="font-semibold text-white">
+              <View className="flex-row items-start justify-between gap-3">
+                <Text className="flex-1 font-semibold text-white">
                   {card.vendorName}
                   {card.isOwnOrder ? " (your order)" : ""}
                 </Text>
@@ -497,8 +497,8 @@ export default function Deliveries() {
             const claim = [...claims].sort((a, b) => (a.claimed_at < b.claimed_at ? 1 : -1))[0];
             const outcome = claim?.released_at ? "Released" : claim?.delivered_at ? "Delivered" : so.status;
             return (
-              <View key={so.id} className="flex-row items-center justify-between gap-1 rounded-lg bg-white/5 p-4">
-                <View>
+              <View key={so.id} className="flex-row items-center justify-between gap-3 rounded-lg bg-white/5 p-4">
+                <View className="flex-1">
                   <Text className="font-semibold text-white">{vendorInfo?.storefront_name ?? "Unknown vendor"}</Text>
                   <Text className="text-sm text-white/60">{outcome}</Text>
                 </View>

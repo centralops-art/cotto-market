@@ -90,8 +90,8 @@ export default function StorefrontPreview() {
                       />
                     )}
                     <View className="flex-1">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="font-semibold text-white">{item.name}</Text>
+                      <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                        <Text className="shrink font-semibold text-white">{item.name}</Text>
                         {item.is_sold_out && (
                           <View className="rounded-full bg-red-500/30 px-2 py-0.5">
                             <Text className="text-xs text-red-200">Sold out</Text>
