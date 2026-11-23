@@ -57,7 +57,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!so) return json({ error: "Order not found or you don't have an active claim on it" }, 404);
 
-    const { data: driverVendor } = await supabase
+    // Service role: app users can't read stripe_account_id (0069). Limited to
+    // the caller's own vendor by owner_profile_id -- keep that filter.
+    const { data: driverVendor } = await service
       .from("vendors")
       .select("id, stripe_account_id")
       .eq("owner_profile_id", user.id)

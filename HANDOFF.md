@@ -4385,7 +4385,10 @@ delivery (§40, needs the founder's open decisions).
 
 ## 47. Open items (founder, 2026-11-23)
 
-**A. Hide the remaining vendor fields from customers (decided, not built).**
+**A. Hide the remaining vendor fields from customers and the public. Stage 1
+built 2026-11-23 (PR, not deployed); stage 2 not built.**
+Scope (founder): READ only. Vendors keep viewing and editing everything they
+can today (UPDATE grants untouched; they read through `my_vendor()`).
 Founder: customers need no vendor details beyond what the app shows now.
 Customer screens display only storefront name, tagline, header image, hours,
 layout and theme. Keep readable too, because the app filters or joins on
@@ -4401,7 +4404,14 @@ them: `id`, `status`, `vendor_types`, `search_tsv`, `region_id`,
    `city`, `state`, `zip`, `slug`, `preorder_hours`, timestamps are in
    `PUBLIC_VENDOR_COLUMNS`, which iOS 12 / vc 10 request. Trim that list,
    ship, get testers updated, then lock.
-Check before locking: cook screens use `my_vendor()` (fine); admin uses the
+Stage 1 = `0069_hide_private_vendor_fields.sql`, plus those three functions
+on the service role. There the `owner_profile_id` filter is the only
+ownership check, so never remove it. **Deploy the three functions first,
+then `db push` 0069.** Rollback: `grant select (<those columns>) on
+public.vendors to anon, authenticated;`.
+Not covered: `vendor_suborders.stripe_account_id` stays readable to the
+customer on that order; the app needs the cook's account id for PaymentSheet.
+Check before hiding: cook screens use `my_vendor()` (fine); admin uses the
 service role (fine). Test signed in before and after.
 
 **B. Social media links (later).** New customer-facing fields for the
