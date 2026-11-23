@@ -1230,6 +1230,7 @@ export type Database = {
           storefront_name: string
           stripe_account_id: string | null
           stripe_account_model: string | null
+          stripe_charges_enabled: boolean
           stripe_tax_ready_at: string | null
           stripe_tax_registration_id: string | null
           suspended_reason: string | null
@@ -1274,6 +1275,7 @@ export type Database = {
           storefront_name: string
           stripe_account_id?: string | null
           stripe_account_model?: string | null
+          stripe_charges_enabled?: boolean
           stripe_tax_ready_at?: string | null
           stripe_tax_registration_id?: string | null
           suspended_reason?: string | null
@@ -1318,6 +1320,7 @@ export type Database = {
           storefront_name?: string
           stripe_account_id?: string | null
           stripe_account_model?: string | null
+          stripe_charges_enabled?: boolean
           stripe_tax_ready_at?: string | null
           stripe_tax_registration_id?: string | null
           suspended_reason?: string | null

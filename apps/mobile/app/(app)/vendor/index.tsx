@@ -20,7 +20,8 @@ export default function VendorDashboard() {
   const isPublished = vendor.status === "active";
   // Direct charges (§39): a kitchen needs a full-dashboard account and Stripe
   // Tax set up on it before checkout accepts orders.
-  const paymentsNeedSetup = vendor.stripe_account_model !== "full" || !vendor.stripe_tax_ready_at;
+  const paymentsNeedSetup =
+    vendor.stripe_account_model !== "full" || !vendor.stripe_tax_ready_at || !vendor.stripe_charges_enabled;
 
   async function togglePublish() {
     setError(null);

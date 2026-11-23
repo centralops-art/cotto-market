@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../src/lib/supabase";
@@ -27,6 +28,17 @@ export default function OrderConfirmation() {
   });
 
   const order = orderQuery.data;
+
+  // Direct charges (§39): paying one kitchen removes only its items from the
+  // cart server-side, so refresh the cart and badge once the order is paid.
+  const queryClient = useQueryClient();
+  const isPaid = order?.status === "paid";
+  useEffect(() => {
+    if (!isPaid) return;
+    for (const key of ["cart", "cart_items", "cart_badge_count", "cart_item_count"]) {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  }, [isPaid, queryClient]);
   const suborders = (order?.vendor_suborders ?? []) as unknown as {
     id: string;
     fulfillment: string;

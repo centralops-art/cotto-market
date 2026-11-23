@@ -14,10 +14,20 @@ import type Stripe from "npm:stripe@17";
 export async function recordTaxTransaction(
   service: SupabaseClient,
   stripe: Stripe,
-  suborder: { id: string; order_id: string; stripe_tax_calculation_id: string | null; stripe_tax_transaction_id: string | null }
+  suborder: {
+    id: string;
+    order_id: string;
+    stripe_tax_calculation_id: string | null;
+    stripe_tax_transaction_id: string | null;
+    // Direct charges (§39): the calculation lives on the cook's account, so
+    // the transaction must be created there too. Null/absent = platform.
+    stripe_account_id?: string | null;
+    charge_model?: string | null;
+  }
 ): Promise<void> {
   // Orders checked out before 0061 have no calculation id to record from.
   if (!suborder.stripe_tax_calculation_id || suborder.stripe_tax_transaction_id) return;
+  const stripeAccount = suborder.charge_model === "direct" ? suborder.stripe_account_id ?? undefined : undefined;
   try {
     const transaction = await stripe.tax.transactions.createFromCalculation(
       {
@@ -25,7 +35,7 @@ export async function recordTaxTransaction(
         reference: `suborder-${suborder.id}`,
         metadata: { order_id: suborder.order_id, vendor_suborder_id: suborder.id },
       },
-      { idempotencyKey: `tax-transaction-${suborder.id}` }
+      { idempotencyKey: `tax-transaction-${suborder.id}`, stripeAccount }
     );
     await service.from("vendor_suborders").update({ stripe_tax_transaction_id: transaction.id }).eq("id", suborder.id);
   } catch (err) {

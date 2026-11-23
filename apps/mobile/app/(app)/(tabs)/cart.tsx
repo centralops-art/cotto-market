@@ -60,7 +60,7 @@ export default function Cart() {
   const itemsQuery = useCartItems(cartQuery.data?.id);
   const invalidateCart = useInvalidateCart(cartQuery.data?.id);
   const [fulfillments, setFulfillments] = useState<Record<string, FulfillmentUI>>({});
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<{ vendorId: string; message: string } | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -165,54 +165,61 @@ export default function Cart() {
     }
   }
 
+  // Stripe Direct charges (HANDOFF.md §39): each kitchen is its own checkout
+  // and its own charge on that cook's Stripe account.
   const checkout = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ vendorId, vendorName }: { vendorId: string; vendorName: string }) => {
       if (!cartQuery.data) throw new Error("No cart");
-      const payload: Record<string, unknown> = {};
-      for (const group of vendorGroups) {
-        const f = fulfillments[group.vendorId];
-        if (!f) throw new Error(`Missing fulfillment for ${group.vendorName}`);
-        if (f.type === "pickup") {
-          if (!f.slot) throw new Error(`Pick a pickup time for ${group.vendorName}`);
-          payload[group.vendorId] = { type: "pickup", pickupAt: f.slot.toISOString() };
-        } else {
-          if (!f.coords) throw new Error(`Confirm the delivery address for ${group.vendorName}`);
-          payload[group.vendorId] = {
-            type: "delivery",
-            deliveryAddress: {
-              line1: f.addressLine1,
-              city: f.city,
-              state: f.state,
-              zip: f.zip,
-              lat: f.coords.lat,
-              lng: f.coords.lng,
-              instructions: f.instructions || undefined,
-            },
-          };
-        }
+      const f = fulfillments[vendorId];
+      if (!f) throw new Error(`Missing fulfillment for ${vendorName}`);
+      let fulfillment: Record<string, unknown>;
+      if (f.type === "pickup") {
+        if (!f.slot) throw new Error(`Pick a pickup time for ${vendorName}`);
+        fulfillment = { type: "pickup", pickupAt: f.slot.toISOString() };
+      } else {
+        if (!f.coords) throw new Error(`Confirm the delivery address for ${vendorName}`);
+        fulfillment = {
+          type: "delivery",
+          deliveryAddress: {
+            line1: f.addressLine1,
+            city: f.city,
+            state: f.state,
+            zip: f.zip,
+            lat: f.coords.lat,
+            lng: f.coords.lng,
+            instructions: f.instructions || undefined,
+          },
+        };
       }
-      return invokeFunction<{ clientSecret: string; orderId: string; breakdown?: unknown }>(
-        "checkout-create-payment-intent",
-        {
-          cartId: cartQuery.data.id,
-          fulfillments: payload,
-        }
-      );
+      return invokeFunction<{
+        mode: "pickup" | "delivery";
+        clientSecret: string;
+        stripeAccountId?: string;
+        orderId: string;
+        vendorName?: string;
+        breakdown?: unknown;
+      }>("checkout-create-payment-intent", {
+        cartId: cartQuery.data.id,
+        vendorId,
+        fulfillment,
+        checkoutVersion: 2,
+      });
     },
     onSuccess: (data) => {
       router.push({
         pathname: "/(app)/checkout",
         params: {
+          mode: data.mode,
           clientSecret: data.clientSecret,
+          stripeAccountId: data.stripeAccountId ?? "",
           orderId: data.orderId,
+          vendorName: data.vendorName ?? "",
           breakdown: data.breakdown ? JSON.stringify(data.breakdown) : "",
         },
       });
     },
-    onError: (err) => setCheckoutError((err as Error).message),
+    onError: (err, variables) => setCheckoutError({ vendorId: variables.vendorId, message: (err as Error).message }),
   });
-
-  const subtotalCents = items.reduce((sum, i) => sum + i.unit_price_cents * i.quantity, 0);
 
   if (itemsQuery.isLoading || cartQuery.isLoading) {
     return (
@@ -259,6 +266,7 @@ export default function Cart() {
           const today = chicagoTodayYMD();
           const selectedYMD = addDaysYMD(today, f.dayOffset);
           const slots = generatePickupSlots(group.hours, selectedYMD);
+          const groupSubtotalCents = group.items.reduce((sum, i) => sum + i.unit_price_cents * i.quantity, 0);
 
           return (
             <View key={group.vendorId} className="gap-3 rounded-lg bg-white/5 p-4">
@@ -396,32 +404,42 @@ export default function Cart() {
                 </View>
               )}
               {f.error && <Text className="text-sm text-red-400">{f.error}</Text>}
+
+              <View className="mt-2 gap-2 border-t border-white/10 pt-3">
+                <View className="flex-row justify-between">
+                  <Text className="text-white/70">Subtotal</Text>
+                  <Text className="text-white">${(groupSubtotalCents / 100).toFixed(2)}</Text>
+                </View>
+                {checkoutError?.vendorId === group.vendorId && (
+                  <Text className="text-red-400">{checkoutError.message}</Text>
+                )}
+                <Pressable
+                  className="items-center rounded-lg bg-cotto-accent py-3 disabled:opacity-50"
+                  disabled={checkout.isPending}
+                  onPress={() => {
+                    setCheckoutError(null);
+                    checkout.mutate({ vendorId: group.vendorId, vendorName: group.vendorName });
+                  }}
+                >
+                  {checkout.isPending && checkout.variables?.vendorId === group.vendorId ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text className="font-semibold text-white">Check out {group.vendorName}</Text>
+                  )}
+                </Pressable>
+              </View>
             </View>
           );
         })
       )}
 
       {vendorGroups.length > 0 && (
-        <View className="gap-2 border-t border-white/10 pt-4">
-          <View className="flex-row justify-between">
-            <Text className="text-white/70">Subtotal</Text>
-            <Text className="text-white">${(subtotalCents / 100).toFixed(2)}</Text>
-          </View>
-          <Text className="text-xs text-white/40">You'll see the delivery fee, tax and total before entering payment.</Text>
-
-          {checkoutError && <Text className="text-red-400">{checkoutError}</Text>}
-
-          <Pressable
-            className="mt-2 items-center rounded-lg bg-cotto-accent py-3 disabled:opacity-50"
-            disabled={checkout.isPending}
-            onPress={() => {
-              setCheckoutError(null);
-              checkout.mutate();
-            }}
-          >
-            {checkout.isPending ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Proceed to checkout</Text>}
-          </Pressable>
-        </View>
+        <Text className="text-xs text-white/40">
+          {vendorGroups.length > 1
+            ? "Each kitchen is checked out and paid separately. "
+            : ""}
+          You'll see the delivery fee, tax and total before entering payment.
+        </Text>
       )}
     </ScrollView>
   );

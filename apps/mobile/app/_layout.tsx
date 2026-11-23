@@ -13,7 +13,7 @@ import { AuthProvider, useAuth } from "../src/lib/auth-context";
 import { AppErrorBoundary } from "../src/components/error-boundary";
 import { Sentry } from "../src/lib/sentry";
 
-const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
+import { STRIPE_MERCHANT_IDENTIFIER, STRIPE_PUBLISHABLE_KEY } from "../src/lib/stripe-config";
 
 function RootNavigation() {
   const { session, profile, loading, isPasswordRecovery } = useAuth();
@@ -60,7 +60,7 @@ function RootLayout() {
     <AppErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.market.cotto.app">
+          <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier={STRIPE_MERCHANT_IDENTIFIER}>
             <QueryClientProvider client={queryClient}>
               <AuthProvider>
                 <StatusBar style="auto" />
