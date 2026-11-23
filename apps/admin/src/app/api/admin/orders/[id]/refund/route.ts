@@ -3,6 +3,20 @@ import Stripe from "stripe";
 import { requireAdmin } from "@/lib/require-admin";
 import { sendEmail } from "@/lib/resend";
 
+type AdminService = NonNullable<Awaited<ReturnType<typeof requireAdmin>>>["service"];
+
+interface DirectSuborder {
+  id: string;
+  subtotal_cents: number;
+  tax_cents: number;
+  delivery_fee_cents: number;
+  stripe_account_id: string | null;
+  stripe_payment_intent_id: string | null;
+  delivery_payment_intent_id: string | null;
+  stripe_tax_transaction_id: string | null;
+  stripe_tax_reversal_id: string | null;
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -14,7 +28,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: order, error: orderError } = await admin.service.from("orders").select("*").eq("id", id).single();
   if (orderError || !order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
-  if (!order.payment_intent_id) return NextResponse.json({ error: "Order has no payment to refund" }, { status: 400 });
   if (order.status !== "paid") {
     return NextResponse.json({ error: `Cannot refund an order with status "${order.status}"` }, { status: 400 });
   }
@@ -24,6 +37,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (amountCents !== undefined && (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > order.total_cents)) {
     return NextResponse.json({ error: "amountCents must be a positive integer no greater than the order total" }, { status: 400 });
   }
+
+  // Direct charges (HANDOFF.md §39): one suborder, food charged on the cook's
+  // account, delivery fee as a separate platform charge.
+  const { data: directSuborders } = await admin.service
+    .from("vendor_suborders")
+    .select(
+      "id, subtotal_cents, tax_cents, delivery_fee_cents, stripe_account_id, stripe_payment_intent_id, delivery_payment_intent_id, stripe_tax_transaction_id, stripe_tax_reversal_id"
+    )
+    .eq("order_id", id)
+    .eq("charge_model", "direct");
+  if (directSuborders && directSuborders.length > 0) {
+    return refundDirectOrder(admin, stripe, order, directSuborders[0] as DirectSuborder, amountCents);
+  }
+
+  if (!order.payment_intent_id) return NextResponse.json({ error: "Order has no payment to refund" }, { status: 400 });
 
   let refund: Stripe.Refund;
   try {
@@ -109,40 +137,156 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .is("stripe_tax_reversal_id", null);
 
     for (const suborder of taxSuborders ?? []) {
-      try {
-        const reversal = await stripe.tax.transactions.createReversal(
-          {
-            mode: "full",
-            original_transaction: suborder.stripe_tax_transaction_id!,
-            reference: `suborder-${suborder.id}-refund`,
-            metadata: { order_id: id, vendor_suborder_id: suborder.id },
-          },
-          { idempotencyKey: `tax-reversal-${suborder.id}` }
-        );
-        await admin.service.from("vendor_suborders").update({ stripe_tax_reversal_id: reversal.id }).eq("id", suborder.id);
-      } catch (err) {
-        await admin.service.from("audit_log").insert({
-          actor_profile_id: admin.user.id,
-          action: "tax_reversal_failed",
-          target_table: "vendor_suborders",
-          target_id: suborder.id,
-          reason: (err as Error).message,
-          metadata: { order_id: id, stripe_tax_transaction_id: suborder.stripe_tax_transaction_id },
-        });
-      }
+      await reverseTax(admin, stripe, id, suborder.id, suborder.stripe_tax_transaction_id!, undefined);
     }
   }
 
-  let emailError: string | undefined;
-  const { data: customerAuth } = await admin.service.auth.admin.getUserById(order.customer_profile_id);
-  if (customerAuth?.user?.email) {
-    const result = await sendEmail({
-      to: customerAuth.user.email,
-      subject: isFullRefund ? "Your Cotto order was refunded" : "Part of your Cotto order was refunded",
-      text: `$${(refund.amount / 100).toFixed(2)} has been refunded to your original payment method. It may take a few business days to appear on your statement.`,
-    });
-    emailError = result.error;
+  const emailError = await emailCustomer(admin.service, order.customer_profile_id, refund.amount, isFullRefund);
+  return NextResponse.json({ ok: true, refundId: refund.id, emailError, transferReversalResults });
+}
+
+// Food is refunded first (on the cook's account, returning Cotto's platform
+// fee with it), then any remainder from the platform delivery charge. A full
+// refund also reverses the cook's Stripe Tax transaction; a partial refund
+// is flagged for manual tax reconciliation, same as before.
+async function refundDirectOrder(
+  admin: NonNullable<Awaited<ReturnType<typeof requireAdmin>>>,
+  stripe: Stripe,
+  order: { id: string; total_cents: number; customer_profile_id: string },
+  suborder: DirectSuborder,
+  amountCents: number | undefined
+) {
+  if (!suborder.stripe_payment_intent_id || !suborder.stripe_account_id) {
+    return NextResponse.json({ error: "Order has no food payment to refund" }, { status: 400 });
+  }
+  const total = amountCents ?? order.total_cents;
+  const foodTotal = suborder.subtotal_cents + suborder.tax_cents;
+  const foodRefundCents = Math.min(total, foodTotal);
+  const deliveryRefundCents = Math.min(total - foodRefundCents, suborder.delivery_fee_cents);
+  const isFullRefund = total >= order.total_cents;
+
+  const refundIds: string[] = [];
+  try {
+    const foodRefund = await stripe.refunds.create(
+      { payment_intent: suborder.stripe_payment_intent_id, amount: foodRefundCents, refund_application_fee: true },
+      { stripeAccount: suborder.stripe_account_id }
+    );
+    refundIds.push(foodRefund.id);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, refundId: refund.id, emailError, transferReversalResults });
+  let deliveryRefundError: string | undefined;
+  if (deliveryRefundCents > 0) {
+    if (!suborder.delivery_payment_intent_id) {
+      deliveryRefundError = "No delivery payment on this order";
+    } else {
+      try {
+        const deliveryRefund = await stripe.refunds.create({
+          payment_intent: suborder.delivery_payment_intent_id,
+          amount: deliveryRefundCents,
+        });
+        refundIds.push(deliveryRefund.id);
+      } catch (err) {
+        deliveryRefundError = (err as Error).message;
+      }
+    }
+    if (deliveryRefundError) {
+      await admin.service.from("audit_log").insert({
+        actor_profile_id: admin.user.id,
+        action: "direct_delivery_refund_failed",
+        target_table: "orders",
+        target_id: order.id,
+        reason: deliveryRefundError,
+        metadata: { amount_cents: deliveryRefundCents },
+      });
+    }
+  }
+
+  const refundedCents = foodRefundCents + (deliveryRefundError ? 0 : deliveryRefundCents);
+  const { error: updateError } = await admin.service
+    .from("orders")
+    .update({ status: isFullRefund && !deliveryRefundError ? "refunded" : "partially_refunded" })
+    .eq("id", order.id);
+  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+  await admin.service.from("audit_log").insert({
+    actor_profile_id: admin.user.id,
+    action: "order_refunded",
+    target_table: "orders",
+    target_id: order.id,
+    metadata: {
+      charge_model: "direct",
+      stripe_refund_ids: refundIds,
+      food_refund_cents: foodRefundCents,
+      delivery_refund_cents: deliveryRefundError ? 0 : deliveryRefundCents,
+    },
+  });
+
+  if (isFullRefund) {
+    if (suborder.stripe_tax_transaction_id && !suborder.stripe_tax_reversal_id) {
+      await reverseTax(admin, stripe, order.id, suborder.id, suborder.stripe_tax_transaction_id, suborder.stripe_account_id);
+    }
+  } else {
+    await admin.service.from("audit_log").insert({
+      actor_profile_id: admin.user.id,
+      action: "partial_refund_tax_reversal_skipped",
+      target_table: "orders",
+      target_id: order.id,
+      reason: "Partial refunds don't automatically reverse Stripe Tax -- needs manual reconciliation on the cook's account.",
+      metadata: { amount_cents: refundedCents },
+    });
+  }
+
+  const emailError = await emailCustomer(admin.service, order.customer_profile_id, refundedCents, isFullRefund);
+  return NextResponse.json({
+    ok: true,
+    refundId: refundIds[0],
+    refundIds,
+    emailError,
+    deliveryRefundError,
+    transferReversalResults: [],
+  });
+}
+
+async function reverseTax(
+  admin: NonNullable<Awaited<ReturnType<typeof requireAdmin>>>,
+  stripe: Stripe,
+  orderId: string,
+  suborderId: string,
+  transactionId: string,
+  stripeAccount: string | undefined
+) {
+  try {
+    const reversal = await stripe.tax.transactions.createReversal(
+      {
+        mode: "full",
+        original_transaction: transactionId,
+        reference: `suborder-${suborderId}-refund`,
+        metadata: { order_id: orderId, vendor_suborder_id: suborderId },
+      },
+      { idempotencyKey: `tax-reversal-${suborderId}`, stripeAccount }
+    );
+    await admin.service.from("vendor_suborders").update({ stripe_tax_reversal_id: reversal.id }).eq("id", suborderId);
+  } catch (err) {
+    await admin.service.from("audit_log").insert({
+      actor_profile_id: admin.user.id,
+      action: "tax_reversal_failed",
+      target_table: "vendor_suborders",
+      target_id: suborderId,
+      reason: (err as Error).message,
+      metadata: { order_id: orderId, stripe_tax_transaction_id: transactionId },
+    });
+  }
+}
+
+async function emailCustomer(service: AdminService, customerProfileId: string, amountCents: number, isFullRefund: boolean) {
+  const { data: customerAuth } = await service.auth.admin.getUserById(customerProfileId);
+  if (!customerAuth?.user?.email) return undefined;
+  const result = await sendEmail({
+    to: customerAuth.user.email,
+    subject: isFullRefund ? "Your Cotto order was refunded" : "Part of your Cotto order was refunded",
+    text: `$${(amountCents / 100).toFixed(2)} has been refunded to your original payment method. It may take a few business days to appear on your statement.`,
+  });
+  return result.error;
 }

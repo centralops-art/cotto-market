@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     const { data: so } = await supabase
       .from("vendor_suborders")
       .select(
-        "id, order_id, vendor_id, status, fulfillment, delivery_cycle, subtotal_cents, delivery_fee_cents, tax_cents, stripe_transfer_id, delivery_address, delivery_lat, delivery_lng, delivery_instructions"
+        "id, order_id, vendor_id, status, fulfillment, delivery_cycle, subtotal_cents, delivery_fee_cents, tax_cents, stripe_transfer_id, delivery_address, delivery_lat, delivery_lng, delivery_instructions, charge_model, delivery_payment_intent_id"
       )
       .eq("id", suborderId)
       .maybeSingle();
@@ -179,8 +179,13 @@ Deno.serve(async (req) => {
 
     if (so.delivery_fee_cents > 0) {
       try {
+        // Direct charges (§39): the delivery fee is its own platform charge,
+        // so only that PaymentIntent is refunded; the cook's food charge is
+        // untouched. Old orders refund part of the single platform charge.
+        const deliveryPaymentIntent = so.charge_model === "direct" ? so.delivery_payment_intent_id : order.payment_intent_id;
+        if (!deliveryPaymentIntent) throw new Error("No delivery payment found for this order");
         const refund = await stripe.refunds.create(
-          { payment_intent: order.payment_intent_id!, amount: so.delivery_fee_cents },
+          { payment_intent: deliveryPaymentIntent, amount: so.delivery_fee_cents },
           { idempotencyKey: `pickup-conversion-refund-${suborderId}-cycle-${so.delivery_cycle}` }
         );
         await service.from("vendor_suborders").update({ delivery_fee_cents: 0 }).eq("id", suborderId);
