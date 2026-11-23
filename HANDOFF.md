@@ -1,8 +1,11 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-22. **Start at §41 (pick up here: Stripe Direct charges
-switch merged and tested, scheduled jobs fixed, next steps), then §42-§46
-(small changes, store builds, kitchen address privacy) and §47 (open items).** Before that:
+Last updated: 2026-11-23. **Start at §47 (open items), then §44-§46 (kitchen
+privacy) and §45 (current store builds: iOS 12 / Android vc 10, gate-tested).**
+**Next: the founder has smaller issues to raise in a new chat. Ask for the
+list. Do not start bundled delivery (§40) until the founder says so; pose its
+questions then.** For the Stripe Direct charges background see §39 and §41.
+Before that:
 §33 (iOS launch crash fix, build 8), §34 (keyboard fix), §35 (next build
 plan and the founder's next gate-test list). The summary below is from
 2026-11-08.
@@ -4061,6 +4064,20 @@ delivery PI for the whole bundle fee. Checkout, with the card entered once:
    fail, cancel.
 
 ### Open decisions (founder, before any code)
+**Founder (2026-11-23): not ready to start this yet. When this phase begins,
+ask these questions first and write no code until they are answered:**
+1. How many kitchens can be in one bundle, and is there a route-mile limit?
+2. Does the 5-mile free radius apply once per bundle?
+3. How much is the per-stop fee, is it charged for each stop after the
+   first, and does it go through the 80/20 split?
+4. Can drivers claim a bundle only when every kitchen is ready, or as soon
+   as the first is?
+5. If one kitchen cancels after payment, do we re-price and refund the
+   difference?
+6. If no driver claims it, does the customer choose pickup or refund for
+   the whole bundle, or per kitchen?
+
+Background and suggestions for those questions:
 - Stop cap (suggest 3) and/or max route miles.
 - Is the 5-mile free radius applied once per bundle?
 - Per-stop fee: charged for each stop after the first? Does it go through
