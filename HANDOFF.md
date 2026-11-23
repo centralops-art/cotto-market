@@ -3907,9 +3907,20 @@ advisor signed off). Build is unblocked.
   `update-delivery-status` uses the platform delivery PI's charge as
   `source_transaction` for direct orders (old orders: the order's PI).
   Payout amount and the 80/20 split are unchanged.
-  - Steps 4-7 handle direct orders end to end. Before deploying: register
-    the Connect webhook (step 5) and add the delivery-PI events to the
-    platform webhook; the current store builds will be told to update.
+  - Steps 4-7 handle direct orders end to end.
+  - **Deployed to the test backend 2026-11-22:** migration 0065 applied;
+    `stripe-connect-webhook` and `stripe-webhook` deployed with
+    `--no-verify-jwt`; `checkout-create-payment-intent`,
+    `checkout-complete`, `cron-direct-checkout-cleanup`,
+    `stripe-connect-status`, `resolve-delivery-offer`,
+    `update-delivery-status` deployed. Founder registered the test-mode
+    Connect webhook destination, added `amount_capturable_updated` +
+    `canceled` to the platform destination, and set
+    `STRIPE_CONNECT_WEBHOOK_SECRET`. Smoke checks: both webhooks reject
+    unsigned requests (400), old-app checkout body gets 426, cleanup cron
+    returns ok. Current TestFlight/Play builds can no longer check out
+    until a new EAS build ships. Repeat the webhook setup in live mode
+    at the §23 cutover.
   - Previously flagged, now covered by steps 5-7: refunds
     (`refund-suborder`, admin refund, `resolve-delivery-offer`) and the
     driver payout (`update-delivery-status`) still assume the old model
