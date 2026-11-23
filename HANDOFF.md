@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-22. **Start at §41 (pick up here: Stripe Direct charges
 switch merged and tested, scheduled jobs fixed, next steps), then §42-§46
-(small changes, store builds, kitchen address privacy; §46 is newest).** Before that:
+(small changes, store builds, kitchen address privacy) and §47 (open items).** Before that:
 §33 (iOS launch crash fix, build 8), §34 (keyboard fix), §35 (next build
 plan and the founder's next gate-test list). The summary below is from
 2026-11-08.
@@ -4366,8 +4366,8 @@ Moved from `supabase/pending-migrations/` and pushed to hosted.
 - **Verified signed out (REST):** 401 for each private column,
   `select=*`, filtering or sorting by them, and an embed through
   `menu_items`. 200 for the app's exact browse columns, search, and the
-  menu/review embeds. Signed-in users get the identical grant; not
-  separately tested after the lock.
+  menu/review embeds. Signed-in users get the identical grant; founder
+  rechecked signed in after the lock (2026-11-23), all passed.
 - **Builds iOS 11 / Android vc 9 and older are now broken** (browse,
   kitchen pages, cook screens). Testers need iOS 12 / vc 10.
 - **New `vendors` columns** need adding to a column grant or the app
@@ -4376,7 +4376,50 @@ Moved from `supabase/pending-migrations/` and pushed to hosted.
   (makes addresses public again).
 - **Still public on active vendors, not in this change:** phone, email,
   `il_tax_account_id`, Stripe ids, `platform_fee_pct`, `cfpm_cert_url`,
-  rejected/suspended reasons. Decide before launch.
+  rejected/suspended reasons. Founder decided: hide them, see §47.
 
 **Next:** live cutover (§23) and, as the next major change, bundled
 delivery (§40, needs the founder's open decisions).
+
+---
+
+## 47. Open items (founder, 2026-11-23)
+
+**A. Hide the remaining vendor fields from customers (decided, not built).**
+Founder: customers need no vendor details beyond what the app shows now.
+Customer screens display only storefront name, tagline, header image, hours,
+layout and theme. Keep readable too, because the app filters or joins on
+them: `id`, `status`, `vendor_types`, `search_tsv`, `region_id`,
+`owner_profile_id` (cook lookups, customer-to-cook messages). Two stages:
+1. *No app build needed:* `stripe_*`, `il_tax_account_id`,
+   `platform_fee_pct`, `free_trial_ends_at`, `cfpm_*`,
+   `cottage_food_acknowledged_at`, `sms_opt_in`, rejected/suspended
+   reasons, `deleted_at`. First move these user-login reads to the service
+   role (after the owner check): `stripe-connect-onboarding`,
+   `stripe-connect-status`, `update-delivery-status`.
+2. *Needs a build first:* `phone`, `email`, `website`, `description`,
+   `city`, `state`, `zip`, `slug`, `preorder_hours`, timestamps are in
+   `PUBLIC_VENDOR_COLUMNS`, which iOS 12 / vc 10 request. Trim that list,
+   ship, get testers updated, then lock.
+Check before locking: cook screens use `my_vendor()` (fine); admin uses the
+service role (fine). Test signed in before and after.
+
+**B. Social media links (later).** New customer-facing fields for the
+vendor's social accounts. New `vendors` columns need a column grant (§46)
+and adding to `PUBLIC_VENDOR_COLUMNS`.
+
+**C. Expo patches at the next EAS build (founder asked).** expo-constants,
+expo-dev-client, expo-image-picker, expo-location, expo-router,
+@expo/metro-runtime (§45). Run `expo install --fix` in its own PR. Check
+that it adds no `minimumReleaseAgeExclude` entries to
+`pnpm-workspace.yaml`; if it does, the releases are still inside pnpm's
+waiting period, so ask the founder. expo-doctor should be 21/21.
+
+**D. Apple ITMS-90725, deadline April 2027.** Apple's notice on iOS build
+12 (a warning; the delivery succeeded): built with the iOS 26.5 SDK.
+Starting April 2027, uploads must be built with the iOS 27 SDK or later
+(Xcode 27+). `eas.json` pins no build image, so EAS picks the default for
+the Expo SDK (57 now). Before April 2027: check which Expo SDK / EAS image
+provides Xcode 27, upgrade or set `build.production.ios.image`, then do a
+full device test on iOS, since a new SDK can change behavior. Aim for
+about February 2027, not the last week.
