@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../../src/lib/supabase";
 import { invokeFunction } from "../../../src/lib/invoke-function";
 import { MessageThread } from "../../../src/components/message-thread";
+import { formatPickupAddress, mapsUrlForAddress, type VendorAddressFields } from "../../../src/lib/pickup-address";
 
 const PICKUP_STEPS = ["received", "confirmed", "preparing", "ready", "completed"];
 const DELIVERY_STEPS = [
@@ -45,7 +46,7 @@ export default function OrderTracking() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vendor_suborders")
-        .select("*, order_items(*), vendors(storefront_name, owner_profile_id)")
+        .select("*, order_items(*), vendors(storefront_name, owner_profile_id, address_line1, city, state, zip)")
         .eq("id", id!)
         .single();
       if (error) throw error;
@@ -124,7 +125,8 @@ export default function OrderTracking() {
   }
 
   const suborder = suborderQuery.data;
-  const vendor = suborder.vendors as unknown as { storefront_name: string; owner_profile_id: string } | null;
+  const vendor = suborder.vendors as unknown as ({ storefront_name: string; owner_profile_id: string } & VendorAddressFields) | null;
+  const pickupAddress = suborder.fulfillment === "pickup" ? formatPickupAddress(vendor) : null;
   const items = (suborder.order_items ?? []) as unknown as { id: string; name_snapshot: string; quantity: number; unit_price_cents: number }[];
   const steps = suborder.fulfillment === "pickup" ? PICKUP_STEPS : DELIVERY_STEPS;
   const isTerminalIssue = suborder.status === "cancelled" || suborder.status === "refunded";
@@ -147,6 +149,13 @@ export default function OrderTracking() {
       <Text className="text-white/60">{suborder.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
       {suborder.fulfillment === "pickup" && suborder.pickup_at && (
         <Text className="text-white/60">Pickup time: {new Date(suborder.pickup_at).toLocaleString()}</Text>
+      )}
+      {pickupAddress && (
+        <Pressable onPress={() => void Linking.openURL(mapsUrlForAddress(pickupAddress))}>
+          <Text className="text-white/60">
+            Pickup address: <Text className="text-cotto-accent underline">{pickupAddress}</Text>
+          </Text>
+        </Pressable>
       )}
       {suborder.fulfillment === "delivery" && suborder.delivery_address && (
         <Text className="text-white/60">
