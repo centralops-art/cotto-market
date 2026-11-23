@@ -4,11 +4,9 @@
 -- and ZIP stay public (general area only). Authorized readers use the
 -- functions from 0067.
 --
--- HELD in supabase/pending-migrations/ on purpose: app builds before the
--- §44 change read vendors with select("*"), which this grant rejects
--- (browse, kitchen pages and the cook's own screens would break). Move it
--- into supabase/migrations/ and `db push` only once testers are on a store
--- build that includes §44.
+-- App builds before §44 (iOS 11 / Android vc 9 and older) read vendors with
+-- select("*"), which this grant rejects, so it was held until iOS 12 /
+-- Android vc 10 passed the gate test on both phones (2026-11-23).
 --
 -- Same column-grant pattern as system_settings (0010). GOTCHA: a column
 -- added to vendors later is NOT readable by anon/authenticated until it is
