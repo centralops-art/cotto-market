@@ -102,7 +102,16 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
         <dt className="text-muted-foreground">CFPM cert expires</dt>
         <dd>{vendor.cfpm_cert_expires_on ?? "--"}</dd>
         <dt className="text-muted-foreground">Stripe account</dt>
-        <dd>{vendor.stripe_account_id ?? "Not connected"}</dd>
+        <dd>
+          {vendor.stripe_account_id ?? "Not connected"}
+          {vendor.stripe_account_model === "express" && " (old Express account: cook must set up Stripe again)"}
+        </dd>
+        <dt className="text-muted-foreground">Sales tax (Stripe Tax)</dt>
+        <dd>
+          {vendor.stripe_tax_ready_at
+            ? `Set up ${new Date(vendor.stripe_tax_ready_at).toLocaleString()} (IL ID ${vendor.il_tax_account_id ?? "--"})`
+            : "Not set up"}
+        </dd>
       </dl>
 
       <div className="mt-6">

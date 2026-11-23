@@ -215,8 +215,9 @@ changes hosted schema, or `apps/mobile`/`apps/admin` typecheck will drift.
 
 | Function | Purpose | Auth |
 |---|---|---|
-| `stripe-connect-onboarding` | Creates/reuses vendor's Connect Express account, returns onboarding Account Link | anon+JWT (owns_vendor via RLS) |
-| `stripe-connect-status` | Checks a vendor's Connect account status | anon+JWT |
+| `stripe-connect-onboarding` | Creates/reuses vendor's full-dashboard Connect account (§39; an old Express account gets replaced), returns onboarding Account Link | anon+JWT (owns_vendor via RLS) |
+| `stripe-connect-status` | Reports account model, onboarding status and Stripe Tax readiness | anon+JWT |
+| `stripe-connect-tax-setup` (§39) | Sets Stripe Tax head office + IL registration on the cook's own account from their IDOR account ID; sets `vendors.stripe_tax_ready_at` | anon+JWT (owns_vendor via RLS) |
 | `notify-vendor-submitted` | Emails admin allow-list when a vendor submits for review | anon+JWT |
 | `cron-cfpm-expiry-check` | pg_cron-triggered; auto-suspends vendors with expired CFPM certs, 60-day admin warning email | service-role (cron) |
 | `checkout-create-payment-intent` | Computes subtotal/delivery fee (Mapbox)/platform fee/Stripe Tax per vendor, writes `orders`+`vendor_suborders`+`order_items` as `pending_payment`, creates the platform PaymentIntent | anon+JWT (caller's own cart) |
@@ -3803,7 +3804,46 @@ advisor signed off). Build is unblocked.
   `profiles.stripe_customer_id` service-role-only (cooks can UPDATE their
   suborders and customers their profile, so without the guard a cook could
   repoint a refund or a customer could borrow another Customer's saved card).
-  Applied to hosted 2026-11-22; `database.ts` regenerated.
+  Applied to hosted 2026-11-22; `database.ts` regenerated. PR #48.
+- Step 3 (onboarding): migration `0064_vendor_direct_charges_onboarding.sql`
+  adds `vendors.stripe_account_model` (`express` | `full`; existing
+  accounts backfilled `express`), `il_tax_account_id`,
+  `stripe_tax_registration_id`, `stripe_tax_ready_at`. The vendor UPDATE
+  guard now also blocks owner edits to `stripe_account_id` (it was only
+  guarded on INSERT) and the new columns.
+  - `stripe-connect-onboarding` creates accounts with controller properties
+    (full dashboard, account pays fees, Stripe covers losses) and requests
+    `card_payments` + `transfers`. Verified in test mode 2026-11-22:
+    Stripe reports them as `type: standard`; tax settings, IL
+    registration and account links all work on a fresh account. No payout
+    schedule is set; the cook controls it.
+  - New `stripe-connect-tax-setup`: head office from the vendor's kitchen
+    address (must be IL), IL `state_sales_tax` registration (reuses an
+    active one), stores the IDOR account ID (8 digits, `1234-5678`).
+  - Mobile: shared `PaymentsSetup` component (Stripe account, then sales
+    tax) used by the onboarding wizard (Submit needs both) and a new
+    `vendor/payments` screen; dashboard shows a "Finish payments setup"
+    banner until both are done.
+  - Admin vendor page shows the account model and tax status.
+  - 0064 applied to hosted and the three functions deployed 2026-11-22;
+    `database.ts` regenerated.
+  - **Device test 2026-11-22 (founder, Android dev build, Three's
+    Kitchen):** banner shown, Stripe onboarding and tax setup completed,
+    screen showed complete, banner cleared. Stripe check afterwards: new
+    account is `standard`/full dashboard, Stripe Tax `active` with IL head
+    office, IL `state_sales_tax` registration active. **But**
+    `charges_enabled` was false (`card_payments` inactive,
+    `individual.id_number` past due): `details_submitted` alone isn't
+    "done". Fixed the Payments screen to show "Stripe needs more
+    information" until `charges_enabled`. **For step 4:** the dashboard
+    banner and checkout gate read only DB columns, which don't know
+    `charges_enabled`. Store it on `vendors` (updated from the Connect
+    `account.updated` webhook and `stripe-connect-status`) and block
+    checkout for a kitchen until it's true.
+  - **Known gap until all cooks re-onboard:** a driver who starts the new
+    Stripe setup but doesn't finish has a new account without `transfers`
+    active, so their delivery payout Transfer would fail. Only matters in
+    test mode now; real cooks onboard once at the live cutover.
 
 ### Target design (keeps orders / vendor_suborders / order_items as-is)
 

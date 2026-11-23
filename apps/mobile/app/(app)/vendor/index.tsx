@@ -18,6 +18,9 @@ export default function VendorDashboard() {
   }
 
   const isPublished = vendor.status === "active";
+  // Direct charges (§39): a kitchen needs a full-dashboard account and Stripe
+  // Tax set up on it before checkout accepts orders.
+  const paymentsNeedSetup = vendor.stripe_account_model !== "full" || !vendor.stripe_tax_ready_at;
 
   async function togglePublish() {
     setError(null);
@@ -49,6 +52,15 @@ export default function VendorDashboard() {
       </View>
       {error && <Text className="text-red-400">{error}</Text>}
 
+      {paymentsNeedSetup && (
+        <Pressable className="rounded-lg border border-amber-300/60 bg-amber-300/10 p-4" onPress={() => router.push("/(app)/vendor/payments")}>
+          <Text className="font-semibold text-amber-300">Finish payments setup</Text>
+          <Text className="text-sm text-white/70">
+            Customers can't check out from your kitchen until your Stripe account and sales tax are set up. Tap to finish.
+          </Text>
+        </Pressable>
+      )}
+
       <Pressable className="items-center rounded-lg bg-cotto-accent py-3" onPress={() => router.push("/(app)/vendor/storefront")}>
         <Text className="font-semibold text-white">Edit Storefront</Text>
       </Pressable>
@@ -57,6 +69,9 @@ export default function VendorDashboard() {
       </Pressable>
       <Pressable className="items-center rounded-lg border border-white/20 py-3" onPress={() => router.push("/(app)/vendor/preview")}>
         <Text className="text-white">Preview Storefront</Text>
+      </Pressable>
+      <Pressable className="items-center rounded-lg border border-white/20 py-3" onPress={() => router.push("/(app)/vendor/payments")}>
+        <Text className="text-white">Payments &amp; Sales Tax</Text>
       </Pressable>
     </View>
   );
