@@ -119,10 +119,25 @@ Deno.serve(async (req) => {
     } else {
       try {
         const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, { apiVersion: "2025-08-27.basil" });
-        const { data: order } = await service.from("orders").select("payment_intent_id").eq("id", so.order_id).single();
+        // source_transaction ties the payout to the charge that funded it.
+        // Direct charges (§39): that's the platform delivery-fee charge (the
+        // food charge lives on the cook's account). Old orders: the single
+        // platform charge on the order.
+        const { data: payment } = await service
+          .from("vendor_suborders")
+          .select("charge_model, delivery_payment_intent_id")
+          .eq("id", suborderId)
+          .single();
+        let fundingPaymentIntent: string | null = null;
+        if (payment?.charge_model === "direct") {
+          fundingPaymentIntent = payment.delivery_payment_intent_id;
+        } else {
+          const { data: order } = await service.from("orders").select("payment_intent_id").eq("id", so.order_id).single();
+          fundingPaymentIntent = order?.payment_intent_id ?? null;
+        }
         let sourceCharge: string | undefined;
-        if (order?.payment_intent_id) {
-          const pi = await stripe.paymentIntents.retrieve(order.payment_intent_id);
+        if (fundingPaymentIntent) {
+          const pi = await stripe.paymentIntents.retrieve(fundingPaymentIntent);
           sourceCharge = typeof pi.latest_charge === "string" ? pi.latest_charge : undefined;
         }
         const transfer = await stripe.transfers.create(

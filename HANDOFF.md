@@ -3903,7 +3903,14 @@ advisor signed off). Build is unblocked.
     cook's account; partial is flagged `partial_refund_tax_reversal_skipped`.
   - `reverseTaxTransaction` / `recordTaxTransaction` take the suborder's
     `charge_model` + `stripe_account_id` and act on the cook's account.
-  - **Not safe for real money until step 7:** refunds
+- Step 7 (driver payout), branch `feat/direct-charges-driver-payout`:
+  `update-delivery-status` uses the platform delivery PI's charge as
+  `source_transaction` for direct orders (old orders: the order's PI).
+  Payout amount and the 80/20 split are unchanged.
+  - Steps 4-7 handle direct orders end to end. Before deploying: register
+    the Connect webhook (step 5) and add the delivery-PI events to the
+    platform webhook; the current store builds will be told to update.
+  - Previously flagged, now covered by steps 5-7: refunds
     (`refund-suborder`, admin refund, `resolve-delivery-offer`) and the
     driver payout (`update-delivery-status`) still assume the old model
     and will fail on direct orders.
