@@ -98,7 +98,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         ))}
       </div>
 
-      <OrderActions orderId={order.id} status={order.status} />
+      <OrderActions orderId={order.id} status={order.status} totalCents={order.total_cents} />
     </main>
   );
 }
