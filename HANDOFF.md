@@ -3876,7 +3876,20 @@ advisor signed off). Build is unblocked.
     pickup and for 3DS (`src/lib/stripe-config.ts` `setStripeAccount`),
     labels the delivery PaymentSheet with the full total and explains
     the two card charges; order confirmation refreshes the cart.
-  - **Not safe for real money until steps 5-7:** refunds
+- Step 5 (Connect webhook), branch `feat/direct-charges-connect-webhook`:
+  new `stripe-connect-webhook` (deploy with `--no-verify-jwt`; secret
+  `STRIPE_CONNECT_WEBHOOK_SECRET`). Registered in Stripe as a separate
+  endpoint for **Events on Connected accounts**: `payment_intent.succeeded`,
+  `payment_intent.payment_failed`, `payment_intent.canceled`,
+  `account.updated`, `charge.dispute.created`. Food PI events check
+  `event.account` against the suborder's snapshot, then
+  `settleDirectOrder(allowCharge: false)`. `account.updated` refreshes
+  `vendors.stripe_charges_enabled`. Disputes go to `audit_log` and an email
+  to `admin_allow_list`; the cook responds in their own Stripe dashboard.
+  The platform endpoint (`stripe-webhook`) also needs
+  `payment_intent.amount_capturable_updated` and `payment_intent.canceled`
+  added for the delivery PI.
+  - **Not safe for real money until steps 6-7:** refunds
     (`refund-suborder`, admin refund, `resolve-delivery-offer`) and the
     driver payout (`update-delivery-status`) still assume the old model
     and will fail on direct orders.
