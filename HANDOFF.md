@@ -4215,3 +4215,30 @@ note; forgot password shows it too; place a pickup order from Three's
 Kitchen and see the address on the confirmation and tracking screens
 (tap opens maps); mark it confirmed/ready and see the address in the
 email; admin region settings show T2 = 30.
+
+**Merged as PR #54 (`96c36ab`), 2026-11-22.**
+
+---
+
+## 43. Production builds iOS 11 / Android vc 9 (2026-11-22, §41 step 8)
+
+Built from `96c36ab` (Direct charges §39 + small changes §42) in the
+`../cotto-build` worktree (detached at `origin/main`, `credentials/`
+present). Pre-build: `pnpm install --frozen-lockfile`, `expo install
+--check` up to date, `expo-doctor` 21/21, all 5 `EXPO_PUBLIC_*` vars in
+EAS production env match `apps/mobile/.env`. eas-cli 27.5.0,
+`--profile production --non-interactive --auto-submit --no-wait`, one
+platform at a time, ~9:00 PM:
+- iOS 1.0.0 (11) → TestFlight, build
+  `a34112e4-084e-464d-87ed-a7a0e2a9a80d`, submission
+  `4739550b-1ef0-41d4-81af-533ea348c15e`. Add it to the TestFlight group
+  manually, same as §27.
+- Android vc 9 → Play internal track, build
+  `3761ce01-0618-426d-b35f-2a7c20f13e2d`, submission
+  `c6968cf8-09d6-4cef-94f5-8b782f6052a4`.
+
+**Status when logged:** both queued; build and submission results not
+yet confirmed. These are the first store builds that can check out under
+Direct charges (older builds get the 426 "Please update" response).
+
+**Next:** gate test on these builds (§41 step 3 plus §42's list).
