@@ -55,9 +55,18 @@ export async function recordTaxTransaction(
 export async function reverseTaxTransaction(
   service: SupabaseClient,
   stripe: Stripe,
-  suborder: { id: string; order_id: string; stripe_tax_transaction_id: string | null; stripe_tax_reversal_id: string | null }
+  suborder: {
+    id: string;
+    order_id: string;
+    stripe_tax_transaction_id: string | null;
+    stripe_tax_reversal_id: string | null;
+    // Direct charges: the transaction lives on the cook's account.
+    stripe_account_id?: string | null;
+    charge_model?: string | null;
+  }
 ): Promise<void> {
   if (!suborder.stripe_tax_transaction_id || suborder.stripe_tax_reversal_id) return;
+  const stripeAccount = suborder.charge_model === "direct" ? suborder.stripe_account_id ?? undefined : undefined;
   try {
     const reversal = await stripe.tax.transactions.createReversal(
       {
@@ -66,7 +75,7 @@ export async function reverseTaxTransaction(
         reference: `suborder-${suborder.id}-refund`,
         metadata: { order_id: suborder.order_id, vendor_suborder_id: suborder.id },
       },
-      { idempotencyKey: `tax-reversal-${suborder.id}` }
+      { idempotencyKey: `tax-reversal-${suborder.id}`, stripeAccount }
     );
     await service.from("vendor_suborders").update({ stripe_tax_reversal_id: reversal.id }).eq("id", suborder.id);
   } catch (err) {

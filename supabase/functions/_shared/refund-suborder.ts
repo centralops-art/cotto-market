@@ -10,7 +10,11 @@
 // incorrectly reverse an unrelated vendor's payout in a multi-vendor cart
 // just because ONE vendor's delivery went unclaimed.
 //
-// The cook is paid immediately at payment_intent.succeeded (see
+// Direct charges (§39, charge_model = 'direct'): two refunds instead -- food
+// + tax on the cook's account (with refund_application_fee) and the delivery
+// fee on the platform's delivery PaymentIntent. No Transfer to reverse.
+//
+// Old orders (charge_model = 'sct'): the cook is paid immediately at payment_intent.succeeded (see
 // stripe-webhook), well before delivery -- so "the cook is paid nothing"
 // (spec 3.7 known-risk item 6) requires an explicit reversal here, same
 // mechanism the admin route already established (migration 0026).
@@ -44,7 +48,19 @@ export async function refundSuborder(
   | { ok: true; refundId: string; amountCents: number; reversed: boolean; reversalError?: string }
   | { ok: false; error: string; alreadyResolved?: boolean }
 > {
-  if (!order.payment_intent_id) return { ok: false, error: "Order has no payment to refund" };
+  // Direct charges (§39): the food was charged on the cook's account and the
+  // delivery fee on the platform, so the refund is two Stripe refunds and
+  // there's no cook Transfer to reverse. Looked up here so callers don't need
+  // to select these columns.
+  const { data: payment } = await service
+    .from("vendor_suborders")
+    .select("charge_model, stripe_account_id, stripe_payment_intent_id, delivery_payment_intent_id")
+    .eq("id", suborder.id)
+    .maybeSingle();
+  const isDirect = payment?.charge_model === "direct";
+  if (isDirect ? !payment?.stripe_payment_intent_id || !payment?.stripe_account_id : !order.payment_intent_id) {
+    return { ok: false, error: "Order has no payment to refund" };
+  }
 
   const amountCents = suborder.subtotal_cents + suborder.delivery_fee_cents + suborder.tax_cents;
   if (amountCents <= 0) return { ok: false, error: "Nothing to refund on this suborder" };
@@ -69,10 +85,27 @@ export async function refundSuborder(
 
   let refund: Stripe.Refund;
   try {
-    refund = await stripe.refunds.create(
-      { payment_intent: order.payment_intent_id, amount: amountCents },
-      { idempotencyKey: `unclaimed-refund-${suborder.id}-cycle-${suborder.delivery_cycle}` }
-    );
+    if (isDirect) {
+      // Food + tax back from the cook's account; refund_application_fee also
+      // returns Cotto's platform fee to the cook, so the cook isn't out of
+      // pocket for a fee on a refunded order.
+      refund = await stripe.refunds.create(
+        {
+          payment_intent: payment!.stripe_payment_intent_id!,
+          amount: suborder.subtotal_cents + suborder.tax_cents,
+          refund_application_fee: true,
+        },
+        {
+          stripeAccount: payment!.stripe_account_id!,
+          idempotencyKey: `unclaimed-refund-food-${suborder.id}-cycle-${suborder.delivery_cycle}`,
+        }
+      );
+    } else {
+      refund = await stripe.refunds.create(
+        { payment_intent: order.payment_intent_id!, amount: amountCents },
+        { idempotencyKey: `unclaimed-refund-${suborder.id}-cycle-${suborder.delivery_cycle}` }
+      );
+    }
   } catch (err) {
     // Compensate: the status flip above already "spent" this suborder's
     // only shot at being refunded -- revert it back to 'ready' so it's
@@ -84,7 +117,29 @@ export async function refundSuborder(
 
   let reversed = false;
   let reversalError: string | undefined;
-  if (suborder.stripe_transfer_id) {
+
+  // Direct: the delivery fee was a separate platform charge. The food refund
+  // already went through, so a failure here is logged for follow-up rather
+  // than undoing the whole refund.
+  if (isDirect && suborder.delivery_fee_cents > 0 && payment?.delivery_payment_intent_id) {
+    try {
+      await stripe.refunds.create(
+        { payment_intent: payment.delivery_payment_intent_id, amount: suborder.delivery_fee_cents },
+        { idempotencyKey: `unclaimed-refund-delivery-${suborder.id}-cycle-${suborder.delivery_cycle}` }
+      );
+    } catch (err) {
+      reversalError = `Delivery fee refund failed: ${(err as Error).message}`;
+      await service.from("audit_log").insert({
+        action: "direct_delivery_refund_failed",
+        target_table: "vendor_suborders",
+        target_id: suborder.id,
+        reason: (err as Error).message,
+        metadata: { order_id: order.id, delivery_payment_intent_id: payment.delivery_payment_intent_id },
+      });
+    }
+  }
+
+  if (!isDirect && suborder.stripe_transfer_id) {
     try {
       const reversal = await stripe.transfers.createReversal(suborder.stripe_transfer_id);
       await service.from("vendor_suborders").update({ stripe_transfer_reversal_id: reversal.id }).eq("id", suborder.id);
@@ -110,7 +165,13 @@ export async function refundSuborder(
     .eq("id", suborder.id)
     .maybeSingle();
   if (taxIds) {
-    await reverseTaxTransaction(service, stripe, { id: suborder.id, order_id: order.id, ...taxIds });
+    await reverseTaxTransaction(service, stripe, {
+      id: suborder.id,
+      order_id: order.id,
+      ...taxIds,
+      charge_model: payment?.charge_model,
+      stripe_account_id: payment?.stripe_account_id,
+    });
   }
 
   // Same simplification as the admin refund route: compares this refund

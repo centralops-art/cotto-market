@@ -3889,7 +3889,21 @@ advisor signed off). Build is unblocked.
   The platform endpoint (`stripe-webhook`) also needs
   `payment_intent.amount_capturable_updated` and `payment_intent.canceled`
   added for the delivery PI.
-  - **Not safe for real money until steps 6-7:** refunds
+- Step 6 (refunds), branch `feat/direct-charges-refunds`:
+  - `_shared/refund-suborder.ts` (T3 auto-refund, customer's T2 refund):
+    for `charge_model = direct`, refunds food + tax on the cook's account
+    with `refund_application_fee: true`, then the delivery fee on the
+    platform delivery PI (failure logged as `direct_delivery_refund_failed`,
+    food refund kept). No Transfer reversal. Same status-lock/compensate.
+  - `resolve-delivery-offer` "switch to pickup": refunds only the delivery
+    PI for direct orders.
+  - Admin `orders/[id]/refund`: direct orders refund food first (cook's
+    account, application fee returned), then any remainder from the
+    delivery PI. Full refund reverses the Stripe Tax transaction on the
+    cook's account; partial is flagged `partial_refund_tax_reversal_skipped`.
+  - `reverseTaxTransaction` / `recordTaxTransaction` take the suborder's
+    `charge_model` + `stripe_account_id` and act on the cook's account.
+  - **Not safe for real money until step 7:** refunds
     (`refund-suborder`, admin refund, `resolve-delivery-offer`) and the
     driver payout (`update-delivery-status`) still assume the old model
     and will fail on direct orders.
