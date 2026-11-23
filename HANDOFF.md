@@ -4316,6 +4316,15 @@ repointed to it. All four now add `.eq("owner_profile_id", caller.id)`.
 `notify-vendor-submitted`, `compute-delivery-eta`. Then a new EAS build,
 then 0068.
 
+**Deployed to the hosted test project 2026-11-23:** 0067 applied,
+`database.ts` regenerated, all five functions deployed. Smoke checks:
+each function returns 401 without a login; anon gets "permission denied"
+on `my_vendor` / `suborder_pickup_location` / `pool_pickup_coords`; an
+anon browse-style vendors select still works. **Not checked from here**
+(needs a signed-in user): the signed-in paths of the new functions and
+the "not yours" 404 for a non-owner. Covered by the gate test below.
+0068 is NOT applied.
+
 **Gate test (dev client, before 0068):** browse + kitchen page + favorites
 load; cook's storefront editor and onboarding still show the address;
 pickup order shows the address on confirmation/tracking; driver pool shows
