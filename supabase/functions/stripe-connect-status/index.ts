@@ -24,16 +24,22 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    // Explicit owner check: vendors_select RLS lets anyone read an ACTIVE
-    // vendor row, so the JWT-scoped select alone does not prove ownership.
     const { data: { user: caller } } = await supabase.auth.getUser();
-    const callerId = caller?.id ?? "00000000-0000-0000-0000-000000000000";
+    if (!caller) {
+      return new Response(JSON.stringify({ error: "Not signed in" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const { data: vendor, error } = await supabase
+    // Service role: app users can't read the Stripe columns (0069). It bypasses
+    // RLS, so the owner_profile_id filter IS the ownership check -- keep it.
+    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: vendor, error } = await service
       .from("vendors")
       .select("stripe_account_id, stripe_account_model, stripe_charges_enabled, il_tax_account_id, stripe_tax_ready_at")
       .eq("id", vendorId)
-      .eq("owner_profile_id", callerId)
+      .eq("owner_profile_id", caller.id)
       .single();
     if (error || !vendor) {
       return new Response(JSON.stringify({ error: "Vendor not found or not yours" }), {
@@ -70,7 +76,6 @@ Deno.serve(async (req) => {
     // Keep the cached flag (0065) current for the dashboard banner. Service
     // role: the vendor guard makes it server-only.
     if (account.charges_enabled !== vendor.stripe_charges_enabled) {
-      const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       await service.from("vendors").update({ stripe_charges_enabled: account.charges_enabled }).eq("id", vendorId);
     }
 

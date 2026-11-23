@@ -28,21 +28,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Scoped to the caller's own JWT so RLS (owns_vendor) enforces that they
-    // can only do this for their own vendor row.
+    // The caller's JWT identifies them.
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    // Explicit owner check: vendors_select RLS lets anyone read an ACTIVE
-    // vendor row, so the JWT-scoped select alone does not prove ownership.
     const { data: { user: caller } } = await supabase.auth.getUser();
-    const callerId = caller?.id ?? "00000000-0000-0000-0000-000000000000";
+    if (!caller) {
+      return new Response(JSON.stringify({ error: "Not signed in" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const { data: vendor, error: vendorError } = await supabase
+    // Service role: app users can't read the Stripe columns (0069). It bypasses
+    // RLS, so the owner_profile_id filter IS the ownership check -- keep it.
+    const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: vendor, error: vendorError } = await serviceClient
       .from("vendors")
       .select("id, stripe_account_id, stripe_account_model, email, storefront_name")
       .eq("id", vendorId)
-      .eq("owner_profile_id", callerId)
+      .eq("owner_profile_id", caller.id)
       .single();
     if (vendorError || !vendor) {
       return new Response(JSON.stringify({ error: "Vendor not found or not yours" }), {
@@ -88,7 +93,6 @@ Deno.serve(async (req) => {
       // Service role: the vendor UPDATE guard (0064) makes these columns
       // server-only. A new account has no Stripe Tax setup yet, so the tax
       // columns reset and the cook redoes stripe-connect-tax-setup.
-      const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
       const { error: updateError } = await serviceClient
         .from("vendors")
         .update({
