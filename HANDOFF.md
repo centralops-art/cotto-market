@@ -3919,6 +3919,22 @@ advisor signed off). Build is unblocked.
     with `cron.job_run_details` afterwards. Also redeployed
     `cron-unclaimed-delivery-check`, which still bundled the pre-step-6
     `refund-suborder.ts`.
+    **Fixed 2026-11-22 (~02:20 UTC):** founder added both Vault secrets.
+    `cron.job_run_details` shows `succeeded` and `net._http_response`
+    shows 200 from every function. First runs worked through old backlog
+    (watchdog auto-released 1 stuck claim and notified dispatch; waitlist
+    sent 1 restock email). Region timers back to 10/20/60 (T2 was 30 by
+    default; check whether 20 is intended).
+  - **Refund/payout test 2026-11-22 (founder + Stripe check), all passed:**
+    admin full refund (pickup $3.85, $0.28 fee returned); admin partial
+    $10 refund taken from the food charge with a proportional $0.73 fee
+    returned; driver payout $11.62 = 80% of a $14.52 delivery fee,
+    `source_transaction` = the delivery charge; T2 "Get a refund" refunded
+    food $55.00 (fee $4.00 returned) + delivery $13.09; T2 "Switch to
+    pickup" refunded only the $14.82 delivery charge. The admin refund
+    button got an optional amount field (it was full-refund only). Not
+    exercised: T3 auto-refund, disputes, Stripe Tax reversal on the cook
+    account (code path shared with the passing refunds).
   - **Deployed to the test backend 2026-11-22:** migration 0065 applied;
     `stripe-connect-webhook` and `stripe-webhook` deployed with
     `--no-verify-jwt`; `checkout-create-payment-intent`,
