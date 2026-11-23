@@ -1446,7 +1446,25 @@ export type Database = {
         }
         Returns: boolean
       }
+      my_vendor: {
+        Args: never
+        Returns: Database["public"]["Tables"]["vendors"]["Row"][]
+        SetofOptions: {
+          from: "*"
+          to: "vendors"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       owns_vendor: { Args: { target_vendor_id: string }; Returns: boolean }
+      pool_pickup_coords: {
+        Args: { so_ids: string[] }
+        Returns: {
+          lat: number
+          lng: number
+          suborder_id: string
+        }[]
+      }
       pool_suborder_customer_first_name: {
         Args: { so_id: string }
         Returns: string
@@ -1558,6 +1576,17 @@ export type Database = {
       }
       suborder_customer_profile_id: { Args: { so_id: string }; Returns: string }
       suborder_driver_display_name: { Args: { so_id: string }; Returns: string }
+      suborder_pickup_location: {
+        Args: { so_id: string }
+        Returns: {
+          address_line1: string
+          city: string
+          state: string
+          zip: string
+          lat: number
+          lng: number
+        }[]
+      }
       suborder_pending_customer_offer: {
         Args: { so_id: string }
         Returns: string

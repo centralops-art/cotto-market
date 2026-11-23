@@ -39,14 +39,22 @@ Deno.serve(async (req) => {
     }
     const normalizedTaxId = `${digits.slice(0, 4)}-${digits.slice(4)}`;
 
-    // Caller's own JWT so RLS (owns_vendor) limits this to their own vendor.
+    // Caller's own JWT identifies them; ownership is checked explicitly
+    // (vendors_select RLS lets anyone read an ACTIVE vendor row).
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: vendor, error: vendorError } = await supabase
+    const { data: { user: caller } } = await supabase.auth.getUser();
+    if (!caller) return json({ error: "Not signed in" }, 401);
+    // Service role for the read: the street address isn't readable by app
+    // users once 0068 is applied (§44). Scoped to the caller's own vendor.
+    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const callerId = caller.id;
+    const { data: vendor, error: vendorError } = await service
       .from("vendors")
       .select("id, stripe_account_id, stripe_account_model, address_line1, city, state, zip")
       .eq("id", vendorId)
+      .eq("owner_profile_id", callerId)
       .single();
     if (vendorError || !vendor) return json({ error: "Vendor not found or not yours" }, 404);
 
@@ -94,7 +102,6 @@ Deno.serve(async (req) => {
     }
 
     // Service role: these vendor columns are server-only (guard, 0064).
-    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { error: updateError } = await service
       .from("vendors")
       .update({

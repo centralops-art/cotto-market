@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { CottageFoodDisclaimerModal, useCottageFoodDisclaimer } from "../../../src/components/cottage-food-disclaimer-modal";
 import { supabase } from "../../../src/lib/supabase";
+import { PUBLIC_VENDOR_COLUMNS } from "../../../src/lib/vendor-columns";
 
 // Browse's own filter-pill order -- Food Truck first after All, per the
 // founder. Distinct from VENDOR_TYPES (vendor onboarding's type-selection
@@ -30,7 +31,7 @@ export default function Browse() {
   const vendorsQuery = useQuery({
     queryKey: ["browse_vendors", debouncedQuery, vendorType],
     queryFn: async () => {
-      let vendorRows = supabase.from("vendors").select("*").eq("status", "active");
+      let vendorRows = supabase.from("vendors").select(PUBLIC_VENDOR_COLUMNS).eq("status", "active");
       if (vendorType) vendorRows = vendorRows.contains("vendor_types", [vendorType]);
       if (debouncedQuery) vendorRows = vendorRows.textSearch("search_tsv", debouncedQuery, { type: "websearch" });
 
@@ -54,7 +55,7 @@ export default function Browse() {
       const extraIds = [...new Set((itemMatches ?? []).map((m) => m.vendor_id))].filter((id) => !directIds.has(id));
       if (extraIds.length === 0) return directMatches ?? [];
 
-      let extraRows = supabase.from("vendors").select("*").eq("status", "active").in("id", extraIds);
+      let extraRows = supabase.from("vendors").select(PUBLIC_VENDOR_COLUMNS).eq("status", "active").in("id", extraIds);
       if (vendorType) extraRows = extraRows.contains("vendor_types", [vendorType]);
       const { data: extraVendors, error: extraError } = await extraRows;
       if (extraError) throw extraError;

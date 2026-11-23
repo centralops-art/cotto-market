@@ -29,17 +29,19 @@ Deno.serve(async (req) => {
     });
     const { data: so } = await supabase
       .from("vendor_suborders")
-      .select("id, delivery_lat, delivery_lng, vendors(lat, lng)")
+      .select("id, vendor_id, delivery_lat, delivery_lng")
       .eq("id", suborderId)
       .maybeSingle();
     if (!so) return json({ error: "Order not found or you don't have an active claim on it" }, 404);
 
-    const vendor = so.vendors as unknown as { lat: number | null; lng: number | null } | null;
+    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    // Kitchen coordinates via service role: not readable by app users once
+    // 0068 is applied (§44). Access was checked by the select above.
+    const { data: vendor } = await service.from("vendors").select("lat, lng").eq("id", so.vendor_id).maybeSingle();
     if (vendor?.lat == null || vendor?.lng == null || so.delivery_lat == null || so.delivery_lng == null) {
       return json({ error: "Missing pickup or delivery coordinates" }, 400);
     }
-
-    const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const directionsUrl =
       `https://api.mapbox.com/directions/v5/mapbox/driving/` +

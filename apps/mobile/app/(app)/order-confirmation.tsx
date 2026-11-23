@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../src/lib/supabase";
-import { formatPickupAddress, mapsUrlForAddress, type VendorAddressFields } from "../../src/lib/pickup-address";
+import { PickupAddressLink } from "../../src/components/pickup-address-link";
 
 export default function OrderConfirmation() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -20,7 +20,7 @@ export default function OrderConfirmation() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orders")
-        .select("*, vendor_suborders(*, vendors(storefront_name, address_line1, city, state, zip))")
+        .select("*, vendor_suborders(*, vendors(storefront_name))")
         .eq("id", orderId!)
         .single();
       if (error) throw error;
@@ -44,7 +44,7 @@ export default function OrderConfirmation() {
     id: string;
     fulfillment: string;
     pickup_at: string | null;
-    vendors: ({ storefront_name: string } & VendorAddressFields) | null;
+    vendors: { storefront_name: string } | null;
   }[];
 
   return (
@@ -72,12 +72,9 @@ export default function OrderConfirmation() {
                     ? `Pickup${suborder.pickup_at ? " at " + new Date(suborder.pickup_at).toLocaleString() : ""}`
                     : "Delivery"}
                 </Text>
-                {suborder.fulfillment === "pickup" && formatPickupAddress(suborder.vendors) && (
-                  <Pressable onPress={() => void Linking.openURL(mapsUrlForAddress(formatPickupAddress(suborder.vendors)!))}>
-                    <Text className="mt-1 text-sm text-cotto-accent underline">
-                      Pickup address: {formatPickupAddress(suborder.vendors)}
-                    </Text>
-                  </Pressable>
+                {/* Only once paid: the address is returned to the customer of a paid order. */}
+                {suborder.fulfillment === "pickup" && isPaid && (
+                  <PickupAddressLink suborderId={suborder.id} className="mt-1 text-sm text-white/60" />
                 )}
               </View>
             ))}

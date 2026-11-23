@@ -31,10 +31,15 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
     });
+    // Explicit owner check: vendors_select RLS lets anyone read an ACTIVE
+    // vendor row, so the JWT-scoped select alone does not prove ownership.
+    const { data: { user: caller } } = await supabase.auth.getUser();
+    const callerId = caller?.id ?? "00000000-0000-0000-0000-000000000000";
     const { data: vendor, error: vendorError } = await supabase
       .from("vendors")
       .select("id, storefront_name, status")
       .eq("id", vendorId)
+      .eq("owner_profile_id", callerId)
       .single();
     if (vendorError || !vendor) {
       return new Response(JSON.stringify({ error: "Vendor not found or not yours" }), {
