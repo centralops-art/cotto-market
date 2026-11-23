@@ -3,7 +3,7 @@ import { signInSchema, signInWithPassword, type SignInInput } from "@cotto/share
 import { Link } from "expo-router";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput } from "react-native";
 import { useKeyboardAwareScroll } from "../../src/lib/use-keyboard-aware-scroll";
 import { supabase } from "../../src/lib/supabase";
 
@@ -81,14 +81,20 @@ export default function SignIn() {
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Sign in</Text>}
       </Pressable>
 
-      <View className="mt-4 flex-row justify-center gap-1">
-        <Text className="text-white/70">Don't have an account?</Text>
-        <Link href="/(auth)/sign-up" className="font-semibold text-cotto-accent">
-          Sign up
-        </Link>
-      </View>
-      <Link href="/(auth)/forgot-password" className="text-center text-white/70">
-        Forgot password?
+      {/* Link's own className isn't reliably styled by NativeWind, which left
+          these rendering as dark, left-aligned default text. Style a Text
+          inside a Pressable instead. */}
+      <Link href="/(auth)/sign-up" asChild>
+        <Pressable className="mt-4 items-center">
+          <Text className="text-center text-white/80">
+            Don't have an account? <Text className="font-semibold text-cotto-accent">Sign up</Text>
+          </Text>
+        </Pressable>
+      </Link>
+      <Link href="/(auth)/forgot-password" asChild>
+        <Pressable className="items-center">
+          <Text className="text-center text-white/80">Forgot password?</Text>
+        </Pressable>
       </Link>
     </ScrollView>
   );

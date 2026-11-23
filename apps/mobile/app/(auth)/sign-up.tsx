@@ -46,8 +46,13 @@ export default function SignUp() {
           We sent a confirmation link to your email address. Click it to finish creating your account, then come back
           and sign in.
         </Text>
-        <Link href="/(auth)/sign-in" className="mt-2 font-semibold text-cotto-accent">
-          Back to sign in
+        <Text className="text-center text-white/70">
+          Don't see it? Check your Spam or Junk folder. It comes from Cotto and can take a few minutes to arrive.
+        </Text>
+        <Link href="/(auth)/sign-in" asChild>
+          <Pressable className="mt-2">
+            <Text className="text-center font-semibold text-cotto-accent">Back to sign in</Text>
+          </Pressable>
         </Link>
       </View>
     );
@@ -153,12 +158,13 @@ export default function SignUp() {
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Sign up</Text>}
       </Pressable>
 
-      <View className="mt-4 flex-row justify-center gap-1">
-        <Text className="text-white/70">Already have an account?</Text>
-        <Link href="/(auth)/sign-in" className="font-semibold text-cotto-accent">
-          Sign in
-        </Link>
-      </View>
+      <Link href="/(auth)/sign-in" asChild>
+        <Pressable className="mt-4 items-center">
+          <Text className="text-center text-white/80">
+            Already have an account? <Text className="font-semibold text-cotto-accent">Sign in</Text>
+          </Text>
+        </Pressable>
+      </Link>
     </ScrollView>
   );
 }

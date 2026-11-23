@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     // Best-effort notifications -- never fail the status update itself.
     const [{ data: order }, { data: vendor }] = await Promise.all([
       service.from("orders").select("customer_profile_id").eq("id", before.order_id).single(),
-      service.from("vendors").select("storefront_name").eq("id", before.vendor_id).single(),
+      service.from("vendors").select("storefront_name, address_line1, city, state, zip").eq("id", before.vendor_id).single(),
     ]);
 
     if (order && vendor) {
@@ -121,6 +121,16 @@ Deno.serve(async (req) => {
       const { data: customerAuth } = await service.auth.admin.getUserById(order.customer_profile_id);
       const customerEmail = customerAuth?.user?.email;
       const { subject, text } = messageFor(newStatus, vendor.storefront_name, before.fulfillment);
+      // Email only: the SMS body must stay word-for-word what the Twilio
+      // A2P campaign approved, so the pickup address is never added to it.
+      const pickupAddress =
+        before.fulfillment === "pickup" && vendor.address_line1
+          ? [vendor.address_line1, vendor.city, [vendor.state, vendor.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")
+          : null;
+      const emailText =
+        pickupAddress && (newStatus === "confirmed" || newStatus === "preparing" || newStatus === "ready")
+          ? `${text}\n\nPickup address: ${pickupAddress}`
+          : text;
 
       async function logNotifyFailure(channel: "email" | "sms", reason: string) {
         await service.from("audit_log").insert({
@@ -139,7 +149,7 @@ Deno.serve(async (req) => {
             const res = await fetch("https://api.resend.com/emails", {
               method: "POST",
               headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ from: "Cotto <notifications@cottomarket.com>", to: customerEmail, subject, text }),
+              body: JSON.stringify({ from: "Cotto <notifications@cottomarket.com>", to: customerEmail, subject, text: emailText }),
             });
             if (!res.ok) throw new Error(`Resend API error (${res.status}): ${await res.text()}`);
           } catch (err) {

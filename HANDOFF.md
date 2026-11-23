@@ -1,7 +1,8 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
 Last updated: 2026-11-22. **Start at §41 (pick up here: Stripe Direct charges
-switch merged and tested, scheduled jobs fixed, next steps).** Before that:
+switch merged and tested, scheduled jobs fixed, next steps), then §42 (small
+pre-build changes).** Before that:
 §33 (iOS launch crash fix, build 8), §34 (keyboard fix), §35 (next build
 plan and the founder's next gate-test list). The summary below is from
 2026-11-08.
@@ -4129,14 +4130,14 @@ Stripe, §39):**
 - The TestFlight / Play builds in testers' hands (iOS 10 / Android vc 8)
   can't check out: the server answers "Please update the Cotto app" (426).
   Only the dev client works until the next store build.
-- Region claim windows are 10 / **20** / 60 minutes (T2 default was 30;
-  founder to confirm 20 is intended).
+- Region claim windows: founder confirmed T2 should be **30**, not 20.
+  Migration 0066 (§42) sets it back to 10 / 30 / 60.
 - Not yet exercised: T3 auto-refund (same code as the tested T2 refund),
   card disputes (Connect webhook emails `admin_allow_list`), Stripe Tax
   reversal on a cook account (same code path as tested refunds).
 
 **Next, in order:**
-1. **Founder's small pre-build changes** (planned for a new chat).
+1. **Founder's small pre-build changes:** built, see §42.
 2. **Step 8: production EAS build** (iOS build 11 / Android vc 9 or
    whatever EAS auto-increments to). Read the "EAS build known issues"
    memory and §27/§29/§33 first: build from a clean worktree of `main`,
@@ -4174,3 +4175,43 @@ Stripe, §39):**
 - Stacked PRs + squash merge: after squashing one PR, the next conflicts.
   Rebase it onto `main` with `git rebase --onto origin/main <previous
   branch's old tip> <branch>`, force-push the PR branch, then merge.
+
+---
+
+## 42. Small pre-build changes (2026-11-22, one grouped PR; ship in the next EAS build)
+
+Founder's decisions for this wave: everything goes into the next EAS
+build (§41 step 2) and later the live cutover (§23). Small changes are
+grouped into one PR. **Bundled delivery (§40) is the next major change**
+and is not in this wave.
+
+- **Pickup address for customers.** Order tracking (`order-tracking/[id]`)
+  and order confirmation show "Pickup address: ..." for pickup orders,
+  from the kitchen's `vendors.address_line1/city/state/zip`. Tapping it
+  opens maps. Helper: `apps/mobile/src/lib/pickup-address.ts` (tested).
+  No RLS change: `vendors_select` already exposes an active vendor's
+  whole row. `update-suborder-status` adds the address to the
+  confirmed / preparing / ready **emails** for pickup orders. The **SMS
+  text is unchanged** (must match the Twilio A2P campaign wording).
+  A suborder switched to pickup by the T2 offer shows it too.
+- **Check your email screens** (sign up, forgot password) now say to
+  check Spam or Junk.
+- **Sign-in (landing) screen links** ("Don't have an account? Sign up",
+  "Forgot password?") were dark and left-aligned: expo-router `Link`'s
+  own `className` isn't reliably styled by NativeWind. They are now
+  `Link asChild` > `Pressable` > `Text`, centered, light text. Same fix on
+  the other auth-screen links (sign up, forgot password).
+- **T2 claim window back to 30 minutes:** migration
+  `0066_reset_t2_claim_window.sql` (North Shore Chicago, 10 / 30 / 60).
+
+**Deploy to the hosted test project (not yet done when written):**
+`supabase db push` (only 0066 pending, dry-run checked) and
+`supabase functions deploy update-suborder-status --project-ref
+hlwatggikosoeejskujq`.
+
+**Gate test (dev client or the next store build):** sign-in screen
+links centered and readable; sign up with a new email and see the Spam
+note; forgot password shows it too; place a pickup order from Three's
+Kitchen and see the address on the confirmation and tracking screens
+(tap opens maps); mark it confirmed/ready and see the address in the
+email; admin region settings show T2 = 30.

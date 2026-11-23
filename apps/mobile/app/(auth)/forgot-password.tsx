@@ -37,8 +37,13 @@ export default function ForgotPassword() {
       <View className="flex-1 items-center justify-center gap-2 bg-cotto-dark px-6">
         <Text className="text-center text-xl font-semibold text-white">Check your email</Text>
         <Text className="text-center text-white/70">We sent you a link to reset your password.</Text>
-        <Link href="/(auth)/sign-in" className="mt-4 font-semibold text-cotto-accent">
-          Back to sign in
+        <Text className="text-center text-white/70">
+          Don't see it? Check your Spam or Junk folder. It can take a few minutes to arrive.
+        </Text>
+        <Link href="/(auth)/sign-in" asChild>
+          <Pressable className="mt-4">
+            <Text className="text-center font-semibold text-cotto-accent">Back to sign in</Text>
+          </Pressable>
         </Link>
       </View>
     );
@@ -82,8 +87,10 @@ export default function ForgotPassword() {
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Send reset link</Text>}
       </Pressable>
 
-      <Link href="/(auth)/sign-in" className="mt-4 text-center text-white/70">
-        Back to sign in
+      <Link href="/(auth)/sign-in" asChild>
+        <Pressable className="mt-4 items-center">
+          <Text className="text-center text-white/80">Back to sign in</Text>
+        </Pressable>
       </Link>
     </ScrollView>
   );
