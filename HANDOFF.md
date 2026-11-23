@@ -4237,8 +4237,22 @@ platform at a time, ~9:00 PM:
   `3761ce01-0618-426d-b35f-2a7c20f13e2d`, submission
   `c6968cf8-09d6-4cef-94f5-8b782f6052a4`.
 
-**Status when logged:** both queued; build and submission results not
-yet confirmed. These are the first store builds that can check out under
-Direct charges (older builds get the 426 "Please update" response).
+**Result (checked 9:40 PM):** both builds FINISHED (iOS ~9:11, Android
+9:15). These are the first store builds that can check out under Direct
+charges (older builds get the 426 "Please update" response).
+- iOS: App Store Connect API shows build 11 uploaded and `VALID`
+  (processed). Still needs adding to the TestFlight group by hand.
+- Android: the auto-submit never reached Play (internal track still had
+  vc 8 after 20 minutes; reason not visible from eas-cli). A manual
+  `eas submit --platform android --profile production --id
+  3761ce01-0618-426d-b35f-2a7c20f13e2d --non-interactive --wait`
+  succeeded (submission `b27cbbd4-27d7-49c5-b395-e811e2eea7ef`); the Play
+  API now shows vc 9 on the internal track, status `completed`.
+- **Checking store status from here:** small Node scripts sign a JWT with
+  the keys in `apps/mobile/credentials/` and call the ASC API
+  (`/v1/builds?filter[app]=6832036494`) and the Play Developer API (open
+  an edit, read `tracks/internal`, delete the edit without committing).
+  Use `--wait` on `eas submit` to see a submission's result. If
+  auto-submit to Play silently doesn't land again, resubmit that way.
 
 **Next:** gate test on these builds (§41 step 3 plus §42's list).
