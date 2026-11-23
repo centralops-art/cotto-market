@@ -1,8 +1,8 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
 Last updated: 2026-11-22. **Start at §41 (pick up here: Stripe Direct charges
-switch merged and tested, scheduled jobs fixed, next steps), then §42 (small
-pre-build changes).** Before that:
+switch merged and tested, scheduled jobs fixed, next steps), then §42-§46
+(small changes, store builds, kitchen address privacy; §46 is newest).** Before that:
 §33 (iOS launch crash fix, build 8), §34 (keyboard fix), §35 (next build
 plan and the founder's next gate-test list). The summary below is from
 2026-11-08.
@@ -4259,7 +4259,7 @@ charges (older builds get the 426 "Please update" response).
 
 ---
 
-## 44. Kitchen street address limited to people with an order (2026-11-23, PR #55 merged `b0e27bc`; 0068 still held)
+## 44. Kitchen street address limited to people with an order (2026-11-23, PR #55 merged `b0e27bc`; 0068 applied, see §46)
 
 **Problem:** `vendors_select` RLS is row-level: anyone, even signed out,
 could read every column of an active vendor, including the cook's home
@@ -4278,8 +4278,8 @@ ZIP stay public.
   - `pool_pickup_coords(so_ids[])`: coords for the driver list; exact for
     the caller's claimed suborders, rounded to 3 decimals (~100 m) for
     pool rows they can see (`can_view_pool_suborder`).
-- `supabase/pending-migrations/0068_lock_vendor_address_columns.sql`
-  (**held**): revokes table-level SELECT on `vendors` from anon /
+- `0068_lock_vendor_address_columns.sql` (held at first; **applied
+  2026-11-23, see §46**): revokes table-level SELECT on `vendors` from anon /
   authenticated and grants every column except `address_line1`, `lat`,
   `lng` (same pattern as `system_settings` in 0010). App builds before
   this change use `select("*")` on vendors and would break (browse,
@@ -4323,7 +4323,7 @@ on `my_vendor` / `suborder_pickup_location` / `pool_pickup_coords`; an
 anon browse-style vendors select still works. **Not checked from here**
 (needs a signed-in user): the signed-in paths of the new functions and
 the "not yours" 404 for a non-owner. Covered by the gate test below.
-0068 is NOT applied.
+0068 was not applied at that point (it is now, §46).
 
 **Gate test (dev client, before 0068):** browse + kitchen page + favorites
 load; cook's storefront editor and onboarding still show the address;
@@ -4333,7 +4333,7 @@ distances; claimed delivery's "open in maps" goes to the kitchen; Payments
 
 ---
 
-## 45. Production builds iOS 12 / Android vc 10 (2026-11-23, first builds with §44)
+## 45. Production builds iOS 12 / Android vc 10 (2026-11-23, first builds with §44; gate passed)
 
 Built from `b0e27bc` in `../cotto-build`, eas-cli 27.5.0, production
 profile with auto-submit. EAS env vars match `apps/mobile/.env`.
@@ -4348,8 +4348,35 @@ profile with auto-submit. EAS env vars match `apps/mobile/.env`.
   skipping pnpm's wait on new releases. Same package set as iOS 11 /
   vc 9 (21/21 then). Take the patches in a later build (§33 says to run
   `--fix` before each build, so this was a deviation).
-- **Not tested on a device**, including §44's signed-in paths and an iOS
-  launch on this package set.
+- **Gate test passed 2026-11-23 (founder, iOS and Android):** launch, §44,
+  checkout, declined card, 3DS, refunds, driver payout and §42's list.
 
-**Next:** gate test (§41 step 3, §42, §44). Apply 0068 only after testers
-are off iOS 11 / Android vc 9 and older; those break once it runs.
+**Next:** see §46.
+
+---
+
+## 46. Kitchen address lock applied (0068, 2026-11-23)
+
+Founder reported all tests passed on both phones and asked to apply 0068.
+Moved from `supabase/pending-migrations/` and pushed to hosted.
+
+- **Pre-checks:** mobile, edge functions, admin (service role throughout)
+  and cotto-web source have no remaining user-role read of
+  `address_line1`/`lat`/`lng`. The grant is all 43 columns minus those 3.
+- **Verified signed out (REST):** 401 for each private column,
+  `select=*`, filtering or sorting by them, and an embed through
+  `menu_items`. 200 for the app's exact browse columns, search, and the
+  menu/review embeds. Signed-in users get the identical grant; not
+  separately tested after the lock.
+- **Builds iOS 11 / Android vc 9 and older are now broken** (browse,
+  kitchen pages, cook screens). Testers need iOS 12 / vc 10.
+- **New `vendors` columns** need adding to a column grant or the app
+  can't read them.
+- **Rollback:** `grant select on public.vendors to anon, authenticated;`
+  (makes addresses public again).
+- **Still public on active vendors, not in this change:** phone, email,
+  `il_tax_account_id`, Stripe ids, `platform_fee_pct`, `cfpm_cert_url`,
+  rejected/suspended reasons. Decide before launch.
+
+**Next:** live cutover (§23) and, as the next major change, bundled
+delivery (§40, needs the founder's open decisions).
