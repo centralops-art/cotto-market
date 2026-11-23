@@ -4204,10 +4204,10 @@ and is not in this wave.
 - **T2 claim window back to 30 minutes:** migration
   `0066_reset_t2_claim_window.sql` (North Shore Chicago, 10 / 30 / 60).
 
-**Deploy to the hosted test project (not yet done when written):**
-`supabase db push` (only 0066 pending, dry-run checked) and
-`supabase functions deploy update-suborder-status --project-ref
-hlwatggikosoeejskujq`.
+**Deployed to the hosted test project 2026-11-22:** migration 0066
+applied (region now reads 10 / 30 / 60); `update-suborder-status`
+version 5 deployed (rejects unauthenticated calls with 401). The new
+email text hasn't been seen in a real email yet.
 
 **Gate test (dev client or the next store build):** sign-in screen
 links centered and readable; sign up with a new email and see the Spam
