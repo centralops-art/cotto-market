@@ -4386,7 +4386,8 @@ delivery (§40, needs the founder's open decisions).
 ## 47. Open items (founder, 2026-11-23)
 
 **A. Hide the remaining vendor fields from customers and the public. Stage 1
-built 2026-11-23 (PR, not deployed); stage 2 not built.**
+deployed to hosted 2026-11-23 (PR #57; signed-in vendor check pending);
+stage 2 not built.**
 Scope (founder): READ only. Vendors keep viewing and editing everything they
 can today (UPDATE grants untouched; they read through `my_vendor()`).
 Founder: customers need no vendor details beyond what the app shows now.
