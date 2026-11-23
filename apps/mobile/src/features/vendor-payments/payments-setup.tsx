@@ -118,7 +118,12 @@ export function PaymentsSetup({ vendorId, onStatusChange }: Props) {
     );
   }
 
-  const stripeDone = status.detailsSubmitted;
+  // details_submitted only means the cook got to the end of Stripe's form;
+  // Stripe can still hold card payments until it gets more (e.g. a full SSN).
+  // Direct charges need charges_enabled, so "done" means both.
+  const detailsDone = status.detailsSubmitted;
+  const stripeDone = detailsDone && status.chargesEnabled;
+  const stripeNeedsMoreInfo = detailsDone && !status.chargesEnabled;
 
   return (
     <View className="gap-6">
@@ -131,6 +136,12 @@ export function PaymentsSetup({ vendorId, onStatusChange }: Props) {
         {status.needsNewAccount && (
           <Text className="text-amber-300">
             Cotto has changed how payments work, so you need to set up a new Stripe account. It takes a few minutes.
+          </Text>
+        )}
+        {stripeNeedsMoreInfo && (
+          <Text className="text-amber-300">
+            Stripe needs a bit more information before your kitchen can take card payments. Tap Continue Stripe setup, or
+            check your Stripe dashboard. If you just finished, Stripe may still be reviewing -- check again in a few minutes.
           </Text>
         )}
         {!stripeDone && (
@@ -159,7 +170,7 @@ export function PaymentsSetup({ vendorId, onStatusChange }: Props) {
         )}
       </View>
 
-      <View className={`gap-3 ${stripeDone ? "" : "opacity-50"}`}>
+      <View className={`gap-3 ${detailsDone ? "" : "opacity-50"}`}>
         <Text className="text-lg font-semibold text-white">2. Sales tax {status.taxReady ? "✓" : ""}</Text>
         <Text className="text-white/70">
           You collect Illinois sales tax on your food. Enter your Illinois Department of Revenue account ID and Cotto will
@@ -170,14 +181,14 @@ export function PaymentsSetup({ vendorId, onStatusChange }: Props) {
           placeholder="IL account ID (1234-5678)"
           placeholderTextColor="#9CA3AF"
           keyboardType="number-pad"
-          editable={stripeDone && !savingTax}
+          editable={detailsDone && !savingTax}
           value={taxId}
           onChangeText={setTaxId}
           maxLength={9}
         />
         <Pressable
           className="items-center rounded-lg border border-white/20 py-3 disabled:opacity-50"
-          disabled={!stripeDone || savingTax || taxId.trim().length === 0}
+          disabled={!detailsDone || savingTax || taxId.trim().length === 0}
           onPress={saveTax}
         >
           {savingTax ? (

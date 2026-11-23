@@ -3827,6 +3827,19 @@ advisor signed off). Build is unblocked.
   - Admin vendor page shows the account model and tax status.
   - 0064 applied to hosted and the three functions deployed 2026-11-22;
     `database.ts` regenerated.
+  - **Device test 2026-11-22 (founder, Android dev build, Three's
+    Kitchen):** banner shown, Stripe onboarding and tax setup completed,
+    screen showed complete, banner cleared. Stripe check afterwards: new
+    account is `standard`/full dashboard, Stripe Tax `active` with IL head
+    office, IL `state_sales_tax` registration active. **But**
+    `charges_enabled` was false (`card_payments` inactive,
+    `individual.id_number` past due): `details_submitted` alone isn't
+    "done". Fixed the Payments screen to show "Stripe needs more
+    information" until `charges_enabled`. **For step 4:** the dashboard
+    banner and checkout gate read only DB columns, which don't know
+    `charges_enabled`. Store it on `vendors` (updated from the Connect
+    `account.updated` webhook and `stripe-connect-status`) and block
+    checkout for a kitchen until it's true.
   - **Known gap until all cooks re-onboard:** a driver who starts the new
     Stripe setup but doesn't finish has a new account without `transfers`
     active, so their delivery payout Transfer would fail. Only matters in
