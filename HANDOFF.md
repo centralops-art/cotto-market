@@ -4242,24 +4242,24 @@ platform at a time, ~9:00 PM:
 charges (older builds get the 426 "Please update" response).
 - iOS: App Store Connect API shows build 11 uploaded and `VALID`
   (processed). Still needs adding to the TestFlight group by hand.
-- Android: the auto-submit never reached Play (internal track still had
-  vc 8 after 20 minutes; reason not visible from eas-cli). A manual
-  `eas submit --platform android --profile production --id
-  3761ce01-0618-426d-b35f-2a7c20f13e2d --non-interactive --wait`
-  succeeded (submission `b27cbbd4-27d7-49c5-b395-e811e2eea7ef`); the Play
-  API now shows vc 9 on the internal track, status `completed`.
-- **Checking store status from here:** small Node scripts sign a JWT with
-  the keys in `apps/mobile/credentials/` and call the ASC API
-  (`/v1/builds?filter[app]=6832036494`) and the Play Developer API (open
-  an edit, read `tracks/internal`, delete the edit without committing).
-  Use `--wait` on `eas submit` to see a submission's result. If
-  auto-submit to Play silently doesn't land again, resubmit that way.
+- Android: the auto-submit did not land (internal track still had vc 8
+  after 20 minutes). A manual `eas submit ... --id
+  3761ce01-0618-426d-b35f-2a7c20f13e2d --wait` then succeeded (submission
+  `b27cbbd4-27d7-49c5-b395-e811e2eea7ef`).
+- **Likely cause (corrected 2026-11-23): Claude's own Play checks.** They
+  opened and deleted a Play "edit" as the same service account EAS submits
+  with, 1-2 minutes after the build finished and then every 2 minutes.
+  Opening an edit can invalidate that account's other open edit. Not
+  proven (submission log not read), but vc 10 (§45) landed when left alone.
+  **Do not query the Play API with that key around a submission.** It is
+  not read-only. Use the expo.dev submission page, Play Console, or
+  `eas submit --wait`. The ASC `/v1/builds` GET is a plain read.
 
 **Next:** gate test on these builds (§41 step 3 plus §42's list).
 
 ---
 
-## 44. Kitchen street address limited to people with an order (2026-11-23, PR pending)
+## 44. Kitchen street address limited to people with an order (2026-11-23, PR #55 merged `b0e27bc`; 0068 still held)
 
 **Problem:** `vendors_select` RLS is row-level: anyone, even signed out,
 could read every column of an active vendor, including the cook's home
@@ -4330,3 +4330,26 @@ load; cook's storefront editor and onboarding still show the address;
 pickup order shows the address on confirmation/tracking; driver pool shows
 distances; claimed delivery's "open in maps" goes to the kitchen; Payments
 & Sales Tax setup still works for the owner.
+
+---
+
+## 45. Production builds iOS 12 / Android vc 10 (2026-11-23, first builds with §44)
+
+Built from `b0e27bc` in `../cotto-build`, eas-cli 27.5.0, production
+profile with auto-submit. EAS env vars match `apps/mobile/.env`.
+- iOS 1.0.0 (12): build `8ef61c06-dd3c-4bcd-a5eb-0d39fa8a6a99`; App Store
+  Connect shows `VALID`. Add to the TestFlight group by hand.
+- Android vc 10: build `7864cb1a-b6f5-4dc8-9d61-3b46225f2542`; on the Play
+  internal track, `completed` (auto-submit, no resubmit needed).
+- **expo-doctor was 20/21:** Expo recommended newer patches of
+  expo-constants, expo-dev-client, expo-image-picker, expo-location,
+  expo-router and @expo/metro-runtime. Not taken: `expo install --fix`
+  added `minimumReleaseAgeExclude` entries to `pnpm-workspace.yaml`,
+  skipping pnpm's wait on new releases. Same package set as iOS 11 /
+  vc 9 (21/21 then). Take the patches in a later build (§33 says to run
+  `--fix` before each build, so this was a deviation).
+- **Not tested on a device**, including §44's signed-in paths and an iOS
+  launch on this package set.
+
+**Next:** gate test (§41 step 3, §42, §44). Apply 0068 only after testers
+are off iOS 11 / Android vc 9 and older; those break once it runs.
