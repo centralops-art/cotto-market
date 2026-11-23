@@ -1,8 +1,10 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-17. **Latest state is at the bottom: §33 (iOS
-launch crash fix, build 8), §34 (keyboard fix), §35 (next build plan and
-the founder's next gate-test list).** The summary below is from 2026-11-08.
+Last updated: 2026-11-22. **Start at §41 (pick up here: Stripe Direct charges
+switch merged and tested, scheduled jobs fixed, next steps).** Before that:
+§33 (iOS launch crash fix, build 8), §34 (keyboard fix), §35 (next build
+plan and the founder's next gate-test list). The summary below is from
+2026-11-08.
 
 First real app store submission is live (§27):
 both Android (Play internal track) and iOS (TestFlight, processing) built
@@ -2790,6 +2792,31 @@ is cheap; the real work is everything downstream of that.
       (`stripe-connect-onboarding`, see §5). Plan for this as part of
       the transition from beta testers to real vendors, not a backend
       flag flip.
+- [ ] **Direct charges (§39) live-mode items** (added 2026-11-22):
+  - [ ] Clear the test-mode Stripe fields on every `vendors` row before
+        cooks re-onboard: `stripe_account_id`, `stripe_account_model`,
+        `stripe_charges_enabled`, `stripe_tax_registration_id`,
+        `stripe_tax_ready_at` (keep `il_tax_account_id`). Otherwise
+        `stripe-connect-onboarding` reuses a `full` test account id with
+        the live key and fails. Also clear `profiles.stripe_customer_id`
+        (test-mode Customers don't exist in live). Do it as a migration
+        (see the "DB content updates via migration" memory) or a
+        service-role script, timed with the key swap.
+  - [ ] Live-mode **Connect** webhook destination ("Events on Connected
+        accounts") to `.../functions/v1/stripe-connect-webhook` with
+        `payment_intent.succeeded`, `payment_intent.payment_failed`,
+        `payment_intent.canceled`, `account.updated`,
+        `charge.dispute.created`; set its secret as
+        `STRIPE_CONNECT_WEBHOOK_SECRET`.
+  - [ ] Live-mode platform webhook also needs
+        `payment_intent.amount_capturable_updated` and
+        `payment_intent.canceled` (on top of succeeded / payment_failed).
+  - [ ] Each cook redoes Payments & Sales Tax in the app (new live
+        full-dashboard account + IL tax setup) and Stripe must show
+        `charges_enabled` before their kitchen can take orders.
+  - [ ] Vault secrets (`project_url`, `service_role_key`) are per Supabase
+        project, not per Stripe mode, so they carry over. Re-check them if
+        the Supabase service role key is ever rotated (§39).
 - [ ] Confirm with the founder whether beta-tester accounts/orders should
       be wiped or left as historical test-mode data once live mode goes
       live (this project's established discipline has been to leave
@@ -3728,7 +3755,7 @@ number, tap Continue, should land in the app).
 
 ---
 
-## 39. In progress: switch Stripe from Separate Charges and Transfers to Direct charges (2026-11-22)
+## 39. Stripe Direct charges: steps 2-7 merged and tested in test mode (2026-11-22; store build and live cutover remain, see §41)
 
 **Founder's decision (2026-11-22):** move to Stripe **Direct charges** to
 reduce Cotto's tax exposure and admin overhead. This replaces the
@@ -3992,16 +4019,22 @@ advisor signed off). Build is unblocked.
 
 ### Build order
 1. Tax sign-off (founder). **Blocking.**
-2. Migration (columns above).
+2. Migration (columns above). **Done, PR #48.**
 3. Onboarding: account type + Stripe Tax setup on connected accounts.
+   **Done, PR #49.**
 4. Checkout: per-kitchen food PI on the cook's account; platform
    delivery PI (authorize, then capture or cancel); abandoned-authorization
-   cleanup cron.
+   cleanup cron. **Done, PR #50.**
 5. Connect webhook endpoint + handler; platform webhook handles delivery PI.
-6. Refund helper, admin refund route, delivery-offer refund.
+   **Done, PR #51.**
+6. Refund helper, admin refund route, delivery-offer refund. **Done, PR #52.**
 7. Driver payout: point `source_transaction` at the delivery charge.
+   **Done, PR #53.**
 8. Mobile per-kitchen checkout + new EAS build, then gate test.
+   **Next.** The mobile code is merged; only the EAS build and store gate
+   test remain (see §41).
 9. Fold into the live-mode cutover (§23) so real cooks onboard once.
+   §23 now lists the Direct-charges items.
 
 ---
 
@@ -4061,3 +4094,83 @@ delivery PI for the whole bundle fee. Checkout, with the card entered once:
 - **Mobile:** multi-stop driver screen (per-stop "picked up"), one
   customer tracking view for several orders, bundle option in the cart.
   New EAS build.
+
+---
+
+## 41. Pick up here (2026-11-22): where things stand after the Direct charges switch
+
+**State of `main`:** Stripe Direct charges steps 2-7 (§39) are merged as
+PRs #48-#53 (squash commits `38e7144`, `9e6ff25`, `d0ba68a`, `1d9f13b`,
+`0ac42e8`, `ea13acc`). Migrations 0063-0065 are applied to the hosted
+project, and every edge function they touch is deployed. `main` is
+byte-identical to what the founder tested on device. The admin site
+(Vercel, deploys from `main`) has the new refund code, including the new
+optional refund amount field.
+
+**What works now, in Stripe test mode (all tested on device + checked in
+Stripe, §39):**
+- Cooks: Payments & Sales Tax screen (vendor dashboard button + onboarding
+  wizard) creates a full-dashboard Stripe account and sets up IL Stripe
+  Tax on it; banner until Stripe shows `charges_enabled`. Only **Three's
+  Kitchen** (its new account, created 2026-11-22) is set up so far; every other test
+  kitchen is still on an old Express account and can't take orders until
+  it redoes Payments & Sales Tax.
+- Customers: per-kitchen checkout ("Check out <kitchen>"). Pickup = one
+  charge on the cook's account. Delivery = Cotto delivery-fee hold, then
+  the food charged on the cook's account with the same card, then the hold
+  captured (or released if the food fails). 3DS and declines tested.
+- Refunds (admin full/partial, T2 refund, T2 switch-to-pickup) and the
+  driver payout from the delivery charge: tested.
+- Scheduled jobs: **they had never run on hosted** (empty Vault, §39);
+  fixed 2026-11-22 by adding the `project_url` and `service_role_key`
+  Vault secrets. All jobs now return 200.
+
+**Known consequences to remember:**
+- The TestFlight / Play builds in testers' hands (iOS 10 / Android vc 8)
+  can't check out: the server answers "Please update the Cotto app" (426).
+  Only the dev client works until the next store build.
+- Region claim windows are 10 / **20** / 60 minutes (T2 default was 30;
+  founder to confirm 20 is intended).
+- Not yet exercised: T3 auto-refund (same code as the tested T2 refund),
+  card disputes (Connect webhook emails `admin_allow_list`), Stripe Tax
+  reversal on a cook account (same code path as tested refunds).
+
+**Next, in order:**
+1. **Founder's small pre-build changes** (planned for a new chat).
+2. **Step 8: production EAS build** (iOS build 11 / Android vc 9 or
+   whatever EAS auto-increments to). Read the "EAS build known issues"
+   memory and §27/§29/§33 first: build from a clean worktree of `main`,
+   copy `apps/mobile/credentials/` in, run `npx expo install --fix` and
+   `npx expo-doctor`, use `eas.cmd`/`npx.cmd` in PowerShell, and check
+   EAS's production env vars match `apps/mobile/.env`. Nothing native
+   changed in §39 (only JS), but the new build is still required because
+   there's no OTA.
+3. **Gate test on the store builds:** pickup + delivery checkout from
+   Three's Kitchen, a declined card, 3DS (`4000 0027 6000 3184`), an admin
+   refund, a delivery through to driver payout. Optionally T3 auto-refund
+   with short region timers (then reset them).
+4. **Step 9 / launch:** live-mode cutover per §23, which now includes the
+   Direct-charges items (clear test-mode Stripe ids on `vendors` /
+   `profiles`, live Connect webhook + secret, extra platform webhook
+   events, every cook re-onboards in live).
+5. Later: bundled delivery (§40), which needs the founder's open
+   decisions first.
+
+**Dev environment notes from this session (Windows):**
+- PowerShell blocks `pnpm.ps1`; use `pnpm.cmd` (e.g.
+  `pnpm.cmd --filter mobile start --dev-client`).
+- If the dev app shows unstyled screens, restart Metro with `--clear` and
+  rescan the QR code. A plain reload doesn't reach a restarted server.
+- `apps/admin/.env.local` points at a **local** Supabase
+  (`127.0.0.1:54321`) that isn't running, so the local admin can't sign
+  in. Use the live admin, or the Vercel preview that every pushed branch
+  gets (link in each PR's Vercel check).
+- Deno isn't installed, so edge functions aren't type-checked locally;
+  `supabase functions deploy` bundles without type-checking. Bugs show up
+  on device or in the function logs.
+- Redeploy **every** function that imports a changed `_shared/*.ts`
+  file. `cron-unclaimed-delivery-check` was missed once and kept the old
+  refund code.
+- Stacked PRs + squash merge: after squashing one PR, the next conflicts.
+  Rebase it onto `main` with `git rebase --onto origin/main <previous
+  branch's old tip> <branch>`, force-push the PR branch, then merge.
