@@ -3727,7 +3727,7 @@ number, tap Continue, should land in the app).
 
 ---
 
-## 39. Planned: switch Stripe from Separate Charges and Transfers to Direct charges (2026-11-22, not started)
+## 39. In progress: switch Stripe from Separate Charges and Transfers to Direct charges (2026-11-22)
 
 **Founder's decision (2026-11-22):** move to Stripe **Direct charges** to
 reduce Cotto's tax exposure and admin overhead. This replaces the
@@ -3777,6 +3777,33 @@ Delivery-order payment flow (card entered once):
   the advisor whether separately charged delivery is taxable in IL
   (today it is treated as non-taxable, §3), and whether Cotto needs to
   report it.
+
+**Tax/legal sign-off: received 2026-11-22** (founder confirmed their tax
+advisor signed off). Build is unblocked.
+
+**Decisions (founder, 2026-11-22):**
+- Connect accounts: full-dashboard accounts created with controller
+  properties (account pays Stripe fees, Stripe/account liable for losses).
+- Drivers: every driver starts as a vendor, so every Connect account is
+  full-dashboard. No separate Express path for drivers.
+- Existing test cooks (Express) re-onboard to new full-dashboard test
+  accounts as soon as the onboarding step ships.
+- Cook Stripe Tax: Cotto collects the cook's IL registration in
+  onboarding and configures Stripe Tax on their account via API.
+  Checkout is blocked for that kitchen until it's set.
+- Platform fee: keep 8% for now; founder will revisit before launch
+  (cooks now pay Stripe processing).
+- Defaults taken: abandoned delivery authorizations are cancelled after
+  30 minutes; old app builds are told to update; one PR per build step.
+
+**Progress:**
+- Step 2 (migration): `0063_direct_charges_columns.sql`. Adds the columns
+  below with `charge_model` defaulting to `'sct'`, so current checkout is
+  unchanged. Trigger guards make the payment columns and
+  `profiles.stripe_customer_id` service-role-only (cooks can UPDATE their
+  suborders and customers their profile, so without the guard a cook could
+  repoint a refund or a customer could borrow another Customer's saved card).
+  Applied to hosted 2026-11-22; `database.ts` regenerated.
 
 ### Target design (keeps orders / vendor_suborders / order_items as-is)
 
