@@ -4256,3 +4256,77 @@ charges (older builds get the 426 "Please update" response).
   auto-submit to Play silently doesn't land again, resubmit that way.
 
 **Next:** gate test on these builds (§41 step 3 plus §42's list).
+
+---
+
+## 44. Kitchen street address limited to people with an order (2026-11-23, PR pending)
+
+**Problem:** `vendors_select` RLS is row-level: anyone, even signed out,
+could read every column of an active vendor, including the cook's home
+street address and exact `lat`/`lng`. Founder's call: only customers with
+an order (plus the people who need it) see the address. City, state and
+ZIP stay public.
+
+**Design (two steps, because of builds in testers' hands):**
+- `0067_private_vendor_address.sql` (**additive, safe any time**):
+  SECURITY DEFINER functions, `authenticated` only:
+  - `my_vendor()`: the cook's own full row (replaces the cook screens'
+    `select("*")`).
+  - `suborder_pickup_location(so_id)`: address + coords for the customer
+    of a `paid`/`partially_refunded` order, the driver with the active
+    claim, the cook, ops admins.
+  - `pool_pickup_coords(so_ids[])`: coords for the driver list; exact for
+    the caller's claimed suborders, rounded to 3 decimals (~100 m) for
+    pool rows they can see (`can_view_pool_suborder`).
+- `supabase/pending-migrations/0068_lock_vendor_address_columns.sql`
+  (**held**): revokes table-level SELECT on `vendors` from anon /
+  authenticated and grants every column except `address_line1`, `lat`,
+  `lng` (same pattern as `system_settings` in 0010). App builds before
+  this change use `select("*")` on vendors and would break (browse,
+  kitchen pages, cook screens). **Move it into `supabase/migrations/` and
+  `db push` only after testers are on a store build containing §44.**
+  Gotcha after 0068: a new `vendors` column is invisible to the app until
+  added to a column grant in a new migration.
+
+**App changes (work before and after 0068):** browse, kitchen profile and
+favorites select `PUBLIC_VENDOR_COLUMNS` (`apps/mobile/src/lib/vendor-columns.ts`);
+cook screens (`use-vendor`, account, vendor onboarding) call `my_vendor()`;
+the cart no longer reads address/coords; order confirmation + tracking
+use `PickupAddressLink` (`src/components/pickup-address-link.tsx`, which
+calls `suborder_pickup_location`); driver pool uses `pool_pickup_coords`;
+driver delivery detail uses `suborder_pickup_location` for navigation.
+Edge functions: `stripe-connect-tax-setup` and `compute-delivery-eta`
+read the address/coords with the service role (after their access check).
+Admin app reads with the service role, unaffected.
+
+**Security fix found along the way (pre-existing, serious):**
+`stripe-connect-onboarding`, `stripe-connect-tax-setup`,
+`stripe-connect-status` and `notify-vendor-submitted` assumed "the
+caller's JWT select proves they own the vendor". It doesn't: any active
+vendor row is readable by anyone. A signed-in user (even an anonymous
+guest) passing an active kitchen's id could get an onboarding link for
+that kitchen's Stripe account, or, for a kitchen still on Express, have a
+new Stripe account created and the kitchen's `stripe_account_id`
+repointed to it. All four now add `.eq("owner_profile_id", caller.id)`.
+**Lesson: vendors RLS does not limit reads to the owner; always check
+`owner_profile_id` explicitly.**
+
+**Deploy:** `db push` (0067 only), then deploy `stripe-connect-onboarding`,
+`stripe-connect-tax-setup`, `stripe-connect-status`,
+`notify-vendor-submitted`, `compute-delivery-eta`. Then a new EAS build,
+then 0068.
+
+**Deployed to the hosted test project 2026-11-23:** 0067 applied,
+`database.ts` regenerated, all five functions deployed. Smoke checks:
+each function returns 401 without a login; anon gets "permission denied"
+on `my_vendor` / `suborder_pickup_location` / `pool_pickup_coords`; an
+anon browse-style vendors select still works. **Not checked from here**
+(needs a signed-in user): the signed-in paths of the new functions and
+the "not yours" 404 for a non-owner. Covered by the gate test below.
+0068 is NOT applied.
+
+**Gate test (dev client, before 0068):** browse + kitchen page + favorites
+load; cook's storefront editor and onboarding still show the address;
+pickup order shows the address on confirmation/tracking; driver pool shows
+distances; claimed delivery's "open in maps" goes to the kitchen; Payments
+& Sales Tax setup still works for the owner.

@@ -1446,7 +1446,69 @@ export type Database = {
         }
         Returns: boolean
       }
+      my_vendor: {
+        Args: never
+        Returns: {
+          address_line1: string | null
+          cfpm_cert_expires_on: string | null
+          cfpm_cert_url: string | null
+          cfpm_expiry_warned_at: string | null
+          city: string | null
+          cottage_food_acknowledged_at: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          email: string | null
+          free_trial_ends_at: string | null
+          header_image_url: string | null
+          hours: Json
+          id: string
+          il_tax_account_id: string | null
+          lat: number | null
+          layout_style: Database["public"]["Enums"]["layout_style"]
+          lng: number | null
+          owner_profile_id: string
+          phone: string | null
+          platform_fee_pct: number | null
+          preorder_hours: Json
+          published_at: string | null
+          region_id: string
+          rejected_reason: string | null
+          search_tsv: unknown
+          slug: string
+          sms_opt_in: boolean
+          state: string | null
+          status: Database["public"]["Enums"]["vendor_status"]
+          storefront_name: string
+          stripe_account_id: string | null
+          stripe_account_model: string | null
+          stripe_charges_enabled: boolean
+          stripe_tax_ready_at: string | null
+          stripe_tax_registration_id: string | null
+          suspended_reason: string | null
+          tagline: string | null
+          theme_palette: Json
+          updated_at: string
+          vendor_types: string[]
+          website: string | null
+          zip: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "vendors"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       owns_vendor: { Args: { target_vendor_id: string }; Returns: boolean }
+      pool_pickup_coords: {
+        Args: { so_ids: string[] }
+        Returns: {
+          lat: number
+          lng: number
+          suborder_id: string
+        }[]
+      }
       pool_suborder_customer_first_name: {
         Args: { so_id: string }
         Returns: string
@@ -1561,6 +1623,17 @@ export type Database = {
       suborder_pending_customer_offer: {
         Args: { so_id: string }
         Returns: string
+      }
+      suborder_pickup_location: {
+        Args: { so_id: string }
+        Returns: {
+          address_line1: string
+          city: string
+          lat: number
+          lng: number
+          state: string
+          zip: string
+        }[]
       }
     }
     Enums: {

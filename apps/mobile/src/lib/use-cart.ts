@@ -37,7 +37,7 @@ export function useCartItems(cartId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("cart_items")
-        .select("*, menu_items(name, image_urls, vendor_id, vendors(storefront_name, address_line1, city, state, zip, lat, lng, hours))")
+        .select("*, menu_items(name, image_urls, vendor_id, vendors(storefront_name, hours))")
         .eq("cart_id", cartId!)
         .order("created_at");
       if (error) throw error;

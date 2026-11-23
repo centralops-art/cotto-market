@@ -199,17 +199,25 @@ export default function Deliveries() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vendor_suborders")
-        .select("id, vendor_id, delivery_fee_cents, delivery_lat, delivery_lng, ready_at, vendors(storefront_name, lat, lng)")
+        .select("id, vendor_id, delivery_fee_cents, delivery_lat, delivery_lng, ready_at, vendors(storefront_name)")
         .eq("fulfillment", "delivery")
         .eq("status", "ready");
       if (error) throw error;
+
+      // Kitchen coordinates aren't readable from vendors directly (§44);
+      // pool_pickup_coords returns them rounded to ~100 m for pool rows.
+      const ids = (data ?? []).map((row) => row.id);
+      const { data: coordRows } = ids.length
+        ? await supabase.rpc("pool_pickup_coords", { so_ids: ids })
+        : { data: [] as { suborder_id: string; lat: number; lng: number }[] };
+      const coordsById = new Map((coordRows ?? []).map((c) => [c.suborder_id, { lat: c.lat, lng: c.lng }]));
 
       // RLS (can_view_pool_suborder) is the actual security boundary here --
       // this select already only returns rows the caller is eligible for.
       const withNames = await Promise.all(
         (data ?? []).map(async (row) => {
           const { data: firstName } = await supabase.rpc("pool_suborder_customer_first_name", { so_id: row.id });
-          return { ...row, customerFirstName: firstName as string | null };
+          return { ...row, customerFirstName: firstName as string | null, pickupCoords: coordsById.get(row.id) ?? null };
         })
       );
       return withNames;
@@ -315,14 +323,12 @@ export default function Deliveries() {
 
   const cards = (poolQuery.data ?? [])
     .map((row) => {
-      const pickupVendor = row.vendors as unknown as { storefront_name: string; lat: number | null; lng: number | null } | null;
-      const distanceToPickup =
-        coords && pickupVendor?.lat != null && pickupVendor?.lng != null
-          ? haversineMiles(coords, { lat: pickupVendor.lat, lng: pickupVendor.lng })
-          : null;
+      const pickupVendor = row.vendors as unknown as { storefront_name: string } | null;
+      const pickup = row.pickupCoords;
+      const distanceToPickup = coords && pickup ? haversineMiles(coords, pickup) : null;
       const distancePickupToDropoff =
-        pickupVendor?.lat != null && pickupVendor?.lng != null && row.delivery_lat != null && row.delivery_lng != null
-          ? haversineMiles({ lat: pickupVendor.lat, lng: pickupVendor.lng }, { lat: row.delivery_lat, lng: row.delivery_lng })
+        pickup && row.delivery_lat != null && row.delivery_lng != null
+          ? haversineMiles(pickup, { lat: row.delivery_lat, lng: row.delivery_lng })
           : null;
       const { driverPayoutCents } = calculateDeliverySplit(row.delivery_fee_cents, splitPct);
       return {

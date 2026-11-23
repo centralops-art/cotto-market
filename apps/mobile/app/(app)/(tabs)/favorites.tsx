@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
+import { PUBLIC_VENDOR_COLUMNS } from "../../../src/lib/vendor-columns";
 import { useAuth } from "../../../src/lib/auth-context";
 
 export default function Favorites() {
@@ -16,7 +17,7 @@ export default function Favorites() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("favorites")
-        .select("id, vendor:vendors(*)")
+        .select(`id, vendor:vendors(${PUBLIC_VENDOR_COLUMNS})` as const)
         .eq("profile_id", profile!.id)
         .not("vendor_id", "is", null);
       if (error) throw error;

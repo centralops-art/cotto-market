@@ -40,11 +40,14 @@ export default function DeliveryClaimDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vendor_suborders")
-        .select("*, order_items(*), vendors(storefront_name, lat, lng)")
+        .select("*, order_items(*), vendors(storefront_name)")
         .eq("id", id!)
         .single();
       if (error) throw error;
-      return data;
+      // Exact kitchen location for the claimed driver (§44: not readable
+      // from vendors directly).
+      const { data: pickup } = await supabase.rpc("suborder_pickup_location", { so_id: id! }).maybeSingle();
+      return { ...data, pickup: pickup ?? null };
     },
   });
 
@@ -138,13 +141,13 @@ export default function DeliveryClaimDetail() {
   }
 
   const suborder = suborderQuery.data;
-  const vendor = suborder.vendors as unknown as { storefront_name: string; lat: number | null; lng: number | null } | null;
+  const vendor = suborder.vendors as unknown as { storefront_name: string } | null;
   const items = (suborder.order_items ?? []) as unknown as { id: string; name_snapshot: string; quantity: number; unit_price_cents: number }[];
   const nextAction = NEXT_ACTION[suborder.status];
   const canRelease = ["claimed", "en_route_to_pickup"].includes(suborder.status);
   const headingToPickup = suborder.status === "claimed" || suborder.status === "en_route_to_pickup";
   const destination = headingToPickup
-    ? { lat: vendor?.lat, lng: vendor?.lng, label: vendor?.storefront_name ?? "pickup" }
+    ? { lat: suborder.pickup?.lat, lng: suborder.pickup?.lng, label: vendor?.storefront_name ?? "pickup" }
     : { lat: suborder.delivery_lat, lng: suborder.delivery_lng, label: "the customer" };
 
   function openInMaps() {

@@ -25,11 +25,7 @@ export default function Account() {
     queryKey: ["vendor", session?.user.id],
     enabled: !!session,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vendors")
-        .select("*")
-        .eq("owner_profile_id", session!.user.id)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("my_vendor").maybeSingle();
       if (error) throw error;
       return data;
     },

@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
+import { PUBLIC_VENDOR_COLUMNS } from "../../../src/lib/vendor-columns";
 import { useAuth } from "../../../src/lib/auth-context";
 import { CartButton } from "../../../src/components/cart-button";
 import { ReviewList } from "../../../src/components/review-list";
@@ -40,7 +41,7 @@ export default function VendorProfile() {
     queryKey: ["vendor_profile", id],
     enabled: !!id,
     queryFn: async () => {
-      const { data, error } = await supabase.from("vendors").select("*").eq("id", id!).maybeSingle();
+      const { data, error } = await supabase.from("vendors").select(PUBLIC_VENDOR_COLUMNS).eq("id", id!).maybeSingle();
       if (error) throw error;
       return data;
     },
