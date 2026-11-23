@@ -3918,7 +3918,16 @@ advisor signed off). Build is unblocked.
     `canceled` to the platform destination, and set
     `STRIPE_CONNECT_WEBHOOK_SECRET`. Smoke checks: both webhooks reject
     unsigned requests (400), old-app checkout body gets 426, cleanup cron
-    returns ok. Current TestFlight/Play builds can no longer check out
+    returns ok.
+  - **Dev-app test 2026-11-22 (founder, Three's Kitchen): pickup,
+    delivery, declined card and 3DS all passed.** Stripe check: food
+    charges succeeded on the cook's account with application fee = 8% of
+    subtotal (e.g. $25.00 subtotal -> 200c); delivery charge captured in
+    full on the platform; the declined checkouts left no captured money
+    (declined food PI stays `requires_payment_method`, an unpaid delivery
+    authorization was canceled). Not yet exercised on device: refunds
+    (admin, T2/T3), driver payout from the delivery charge, disputes.
+    Current TestFlight/Play builds can no longer check out
     until a new EAS build ships. Repeat the webhook setup in live mode
     at the §23 cutover.
   - Previously flagged, now covered by steps 5-7: refunds
