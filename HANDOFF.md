@@ -3903,7 +3903,61 @@ advisor signed off). Build is unblocked.
     cook's account; partial is flagged `partial_refund_tax_reversal_skipped`.
   - `reverseTaxTransaction` / `recordTaxTransaction` take the suborder's
     `charge_model` + `stripe_account_id` and act on the cook's account.
-  - **Not safe for real money until step 7:** refunds
+- Step 7 (driver payout), branch `feat/direct-charges-driver-payout`:
+  `update-delivery-status` uses the platform delivery PI's charge as
+  `source_transaction` for direct orders (old orders: the order's PI).
+  Payout amount and the 80/20 split are unchanged.
+  - Steps 4-7 handle direct orders end to end.
+  - **Found 2026-11-22 while testing T2: no scheduled job has ever run on
+    the hosted project.** `vault.secrets` was empty, so every pg_cron job
+    (0014/0034/0040/0045/0048/vendor-trial/0065) failed with `null value
+    in column "url" of relation "http_request_queue"`. The one-time Vault
+    setup in 0014's header (`project_url`, `service_role_key`) was never
+    done on hosted. Earlier gate tests must have triggered the crons by
+    hand. Fix: founder adds both Vault secrets (the legacy `service_role`
+    JWT, not an `sb_secret_` key, since the functions verify JWTs). Check
+    with `cron.job_run_details` afterwards. Also redeployed
+    `cron-unclaimed-delivery-check`, which still bundled the pre-step-6
+    `refund-suborder.ts`.
+    **Fixed 2026-11-22 (~02:20 UTC):** founder added both Vault secrets.
+    `cron.job_run_details` shows `succeeded` and `net._http_response`
+    shows 200 from every function. First runs worked through old backlog
+    (watchdog auto-released 1 stuck claim and notified dispatch; waitlist
+    sent 1 restock email). Region timers back to 10/20/60 (T2 was 30 by
+    default; check whether 20 is intended).
+  - **Refund/payout test 2026-11-22 (founder + Stripe check), all passed:**
+    admin full refund (pickup $3.85, $0.28 fee returned); admin partial
+    $10 refund taken from the food charge with a proportional $0.73 fee
+    returned; driver payout $11.62 = 80% of a $14.52 delivery fee,
+    `source_transaction` = the delivery charge; T2 "Get a refund" refunded
+    food $55.00 (fee $4.00 returned) + delivery $13.09; T2 "Switch to
+    pickup" refunded only the $14.82 delivery charge. The admin refund
+    button got an optional amount field (it was full-refund only). Not
+    exercised: T3 auto-refund, disputes, Stripe Tax reversal on the cook
+    account (code path shared with the passing refunds).
+  - **Deployed to the test backend 2026-11-22:** migration 0065 applied;
+    `stripe-connect-webhook` and `stripe-webhook` deployed with
+    `--no-verify-jwt`; `checkout-create-payment-intent`,
+    `checkout-complete`, `cron-direct-checkout-cleanup`,
+    `stripe-connect-status`, `resolve-delivery-offer`,
+    `update-delivery-status` deployed. Founder registered the test-mode
+    Connect webhook destination, added `amount_capturable_updated` +
+    `canceled` to the platform destination, and set
+    `STRIPE_CONNECT_WEBHOOK_SECRET`. Smoke checks: both webhooks reject
+    unsigned requests (400), old-app checkout body gets 426, cleanup cron
+    returns ok.
+  - **Dev-app test 2026-11-22 (founder, Three's Kitchen): pickup,
+    delivery, declined card and 3DS all passed.** Stripe check: food
+    charges succeeded on the cook's account with application fee = 8% of
+    subtotal (e.g. $25.00 subtotal -> 200c); delivery charge captured in
+    full on the platform; the declined checkouts left no captured money
+    (declined food PI stays `requires_payment_method`, an unpaid delivery
+    authorization was canceled). Not yet exercised on device: refunds
+    (admin, T2/T3), driver payout from the delivery charge, disputes.
+    Current TestFlight/Play builds can no longer check out
+    until a new EAS build ships. Repeat the webhook setup in live mode
+    at the §23 cutover.
+  - Previously flagged, now covered by steps 5-7: refunds
     (`refund-suborder`, admin refund, `resolve-delivery-offer`) and the
     driver payout (`update-delivery-status`) still assume the old model
     and will fail on direct orders.
