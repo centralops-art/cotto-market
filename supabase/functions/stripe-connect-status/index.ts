@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
 
     const { data: vendor, error } = await supabase
       .from("vendors")
-      .select("stripe_account_id, stripe_account_model, il_tax_account_id, stripe_tax_ready_at")
+      .select("stripe_account_id, stripe_account_model, stripe_charges_enabled, il_tax_account_id, stripe_tax_ready_at")
       .eq("id", vendorId)
       .single();
     if (error || !vendor) {
@@ -61,6 +61,13 @@ Deno.serve(async (req) => {
     }
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const account = await stripe.accounts.retrieve(vendor.stripe_account_id);
+
+    // Keep the cached flag (0065) current for the dashboard banner. Service
+    // role: the vendor guard makes it server-only.
+    if (account.charges_enabled !== vendor.stripe_charges_enabled) {
+      const service = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await service.from("vendors").update({ stripe_charges_enabled: account.charges_enabled }).eq("id", vendorId);
+    }
 
     return new Response(
       JSON.stringify({

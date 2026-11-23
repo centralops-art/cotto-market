@@ -13,6 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { recordTaxTransaction } from "../_shared/stripe-tax.ts";
+import { settleDirectOrder } from "../_shared/direct-checkout.ts";
 
 Deno.serve(async (req) => {
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -53,6 +54,20 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Direct charges (§39): this platform endpoint only sees the delivery-fee
+    // PaymentIntent (food charges live on cooks' accounts). Never run the old
+    // Transfer path for them; just settle the order as far as Stripe's state
+    // allows (never charges a card). Step 5 adds the Connect endpoint.
+    if (event.type.startsWith("payment_intent.")) {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      if (pi.metadata?.charge_model === "direct") {
+        if (pi.metadata.order_id && event.type !== "payment_intent.payment_failed") {
+          await settleDirectOrder(service, stripe, pi.metadata.order_id, { allowCharge: false });
+        }
+        return new Response(JSON.stringify({ ok: true, direct: true }), { status: 200 });
+      }
+    }
+
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as Stripe.PaymentIntent;
       const orderId = pi.metadata.order_id;

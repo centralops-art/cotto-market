@@ -105,6 +105,8 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
         <dd>
           {vendor.stripe_account_id ?? "Not connected"}
           {vendor.stripe_account_model === "express" && " (old Express account: cook must set up Stripe again)"}
+          {vendor.stripe_account_model === "full" &&
+            (vendor.stripe_charges_enabled ? " (card payments on)" : " (card payments not enabled yet by Stripe)")}
         </dd>
         <dt className="text-muted-foreground">Sales tax (Stripe Tax)</dt>
         <dd>

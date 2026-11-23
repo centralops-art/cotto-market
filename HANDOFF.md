@@ -3840,6 +3840,46 @@ advisor signed off). Build is unblocked.
     `charges_enabled`. Store it on `vendors` (updated from the Connect
     `account.updated` webhook and `stripe-connect-status`) and block
     checkout for a kitchen until it's true.
+- Step 4 (checkout), branch `feat/direct-charges-checkout`:
+  - Migration `0065_direct_checkout.sql`: `vendors.stripe_charges_enabled`
+    (server-only, in both vendor guards) and the pg_cron schedule for
+    `cron-direct-checkout-cleanup` (every 5 min).
+  - `checkout-create-payment-intent` takes `{ cartId, vendorId,
+    fulfillment, checkoutVersion: 2 }` and prices one kitchen. Requests
+    without `vendorId` (old builds) get 426 "Please update the Cotto app".
+    Gate: vendor `active`, `stripe_account_model = full`,
+    `stripe_tax_ready_at` set, and `charges_enabled` re-read from Stripe
+    (cached to `vendors.stripe_charges_enabled`). Tax calculated on the
+    cook's account. Suborder written with `charge_model = direct` and the
+    account snapshot. `orders.payment_intent_id` stays null for direct
+    orders (the PI ids live on the suborder).
+    - Pickup: food PI on the cook's account (`application_fee_amount` =
+      platform fee); app's PaymentSheet uses the cook's `stripeAccountId`.
+    - Delivery: platform Customer (`profiles.stripe_customer_id`, created
+      on first delivery checkout) + manual-capture delivery PI, cards
+      only, `setup_future_usage: on_session`.
+  - New `_shared/direct-checkout.ts`: `settleDirectOrder` (clone card to
+    cook account, create+confirm food PI with `use_stripe_sdk`, capture or
+    cancel delivery, finalize) and `cancelDirectOrder`. Finalize wins via a
+    conditional `pending_payment -> paid` update, then records the tax
+    transaction on the cook's account, stores the application fee id,
+    deletes only that kitchen's `cart_items` (cart -> `checked_out` when
+    empty), and sends the emails.
+  - New `checkout-complete` (app calls it after PaymentSheet and after any
+    3DS step) and `cron-direct-checkout-cleanup` (pending direct orders
+    30+ min old: settle if the food charge succeeded, otherwise cancel).
+  - `stripe-webhook`: `payment_intent.*` events for PIs with
+    `metadata.charge_model = direct` skip the Transfer path and just call
+    `settleDirectOrder(allowCharge: false)`. Full Connect endpoint is step 5.
+  - Mobile: per-kitchen "Check out <kitchen>" buttons in the cart;
+    checkout screen switches the Stripe SDK to the cook's account for
+    pickup and for 3DS (`src/lib/stripe-config.ts` `setStripeAccount`),
+    labels the delivery PaymentSheet with the full total and explains
+    the two card charges; order confirmation refreshes the cart.
+  - **Not safe for real money until steps 5-7:** refunds
+    (`refund-suborder`, admin refund, `resolve-delivery-offer`) and the
+    driver payout (`update-delivery-status`) still assume the old model
+    and will fail on direct orders.
   - **Known gap until all cooks re-onboard:** a driver who starts the new
     Stripe setup but doesn't finish has a new account without `transfers`
     active, so their delivery payout Transfer would fail. Only matters in
