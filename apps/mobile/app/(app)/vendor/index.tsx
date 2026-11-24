@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useVendor } from "../../../src/lib/use-vendor";
 
 export default function VendorDashboard() {
@@ -36,14 +36,14 @@ export default function VendorDashboard() {
   }
 
   return (
-    <View className="flex-1 gap-4 bg-cotto-dark px-6 pt-16">
+    <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 64, paddingBottom: 48, gap: 16 }}>
       <Pressable onPress={() => router.replace("/(app)/(tabs)/account")}>
         <Text className="text-white/60">&larr; Back to account</Text>
       </Pressable>
       <Text className="text-2xl font-bold text-white">{vendor.storefront_name}</Text>
 
-      <View className="flex-row items-center justify-between rounded-lg bg-white/5 p-4">
-        <View>
+      <View className="flex-row items-center justify-between gap-3 rounded-lg bg-white/5 p-4">
+        <View className="flex-1">
           <Text className="font-semibold text-white">{isPublished ? "Published" : "Unpublished"}</Text>
           <Text className="text-sm text-white/60">
             {isPublished ? "Customers can find and order from you." : "Only you can see your storefront right now."}
@@ -74,6 +74,6 @@ export default function VendorDashboard() {
       <Pressable className="items-center rounded-lg border border-white/20 py-3" onPress={() => router.push("/(app)/vendor/payments")}>
         <Text className="text-white">Payments &amp; Sales Tax</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }

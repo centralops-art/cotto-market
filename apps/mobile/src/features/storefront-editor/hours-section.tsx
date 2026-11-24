@@ -54,7 +54,7 @@ export function HoursSection({ title, value, onSave }: Props) {
       <Text className="text-lg font-bold text-white">{title}</Text>
 
       {WEEKDAYS.map((day) => (
-        <View key={day} className="flex-row items-center gap-2">
+        <View key={day} className="flex-row flex-wrap items-center gap-2">
           <Text className="w-10 text-white/80">{DAY_LABELS[day]}</Text>
           <Pressable
             className={`rounded-md border px-2 py-1 ${hours[day].closed ? "border-cotto-accent bg-cotto-accent/20" : "border-white/20"}`}
@@ -63,7 +63,7 @@ export function HoursSection({ title, value, onSave }: Props) {
             <Text className={hours[day].closed ? "text-cotto-accent" : "text-white/70"}>Closed</Text>
           </Pressable>
           {!hours[day].closed && (
-            <>
+            <View className="flex-row items-center gap-2">
               <TextInput
                 className="w-16 rounded-md bg-white/10 px-2 py-1 text-center text-white"
                 placeholder="09:00"
@@ -81,7 +81,7 @@ export function HoursSection({ title, value, onSave }: Props) {
                 value={hours[day].close}
                 onChangeText={(t) => updateDay(day, { close: t })}
               />
-            </>
+            </View>
           )}
         </View>
       ))}

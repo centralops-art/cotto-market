@@ -75,8 +75,8 @@ export default function Kitchen() {
               className="gap-1 rounded-lg bg-white/5 p-4"
               onPress={() => router.push({ pathname: "/(app)/kitchen/[id]", params: { id: so.id } })}
             >
-              <View className="flex-row items-center justify-between">
-                <Text className="font-semibold text-white">{so.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
+              <View className="flex-row items-center justify-between gap-3">
+                <Text className="flex-1 font-semibold text-white">{so.fulfillment === "pickup" ? "Pickup" : "Delivery"} order</Text>
                 <View className="rounded-full bg-cotto-accent/20 px-3 py-1">
                   <Text className="text-xs font-semibold text-cotto-accent">{STATUS_LABELS[so.status] ?? so.status}</Text>
                 </View>

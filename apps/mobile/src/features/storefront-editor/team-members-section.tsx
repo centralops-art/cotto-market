@@ -165,12 +165,14 @@ export function TeamMembersSection({ vendorId }: { vendorId: string }) {
               <Text className="text-xs text-red-400">{driverByMember.get(member.id)?.rejected_reason}</Text>
             )}
           </View>
-          <Pressable onPress={() => onUploadPhoto(member)}>
-            <Text className="text-cotto-accent">Photo</Text>
-          </Pressable>
-          <Pressable onPress={() => onDelete(member)}>
-            <Text className="text-red-400">Remove</Text>
-          </Pressable>
+          <View className="items-end gap-3">
+            <Pressable onPress={() => onUploadPhoto(member)}>
+              <Text className="text-cotto-accent">Photo</Text>
+            </Pressable>
+            <Pressable onPress={() => onDelete(member)}>
+              <Text className="text-red-400">Remove</Text>
+            </Pressable>
+          </View>
         </View>
       ))}
 

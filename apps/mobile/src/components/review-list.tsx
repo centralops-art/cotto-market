@@ -65,7 +65,7 @@ export function ReviewList({ vendorId }: { vendorId: string }) {
 
   return (
     <View className="gap-3">
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row flex-wrap items-center gap-x-2">
         <Text className="text-lg font-semibold text-white">Reviews</Text>
         {summaryQuery.data && summaryQuery.data.count > 0 && (
           <>
@@ -82,8 +82,8 @@ export function ReviewList({ vendorId }: { vendorId: string }) {
       ) : (
         reviews.map((review) => (
           <View key={review.id} className="gap-2 rounded-lg bg-white/5 p-3">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-1 flex-row flex-wrap items-center gap-x-2">
                 <StarRating value={review.rating_overall} size="sm" />
                 <Text className="text-sm text-white/60">{review.reviewerFirstName ?? "A customer"}</Text>
               </View>

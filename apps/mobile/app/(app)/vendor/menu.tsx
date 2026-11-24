@@ -182,41 +182,43 @@ export default function MenuBuilder() {
 
       {categoriesQuery.data?.map((category, index) => (
         <View key={category.id} className="gap-2 rounded-lg bg-white/5 p-3">
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
             {renamingId === category.id ? (
               <TextInput
-                className="flex-1 rounded-md bg-white/10 px-2 py-1 text-white"
+                className="shrink grow basis-[110px] rounded-md bg-white/10 px-2 py-1 text-white"
                 value={renameValue}
                 onChangeText={setRenameValue}
                 onSubmitEditing={() => renameCategory(category.id)}
                 autoFocus
               />
             ) : (
-              <Text className="flex-1 text-lg font-semibold text-white">{category.name}</Text>
+              <Text className="shrink grow basis-[110px] text-lg font-semibold text-white">{category.name}</Text>
             )}
-            <Pressable disabled={index === 0} onPress={() => moveCategory(category, -1)}>
-              <Text className={index === 0 ? "text-white/20" : "text-white/70"}>Up</Text>
-            </Pressable>
-            <Pressable disabled={index === (categoriesQuery.data?.length ?? 1) - 1} onPress={() => moveCategory(category, 1)}>
-              <Text className={index === (categoriesQuery.data?.length ?? 1) - 1 ? "text-white/20" : "text-white/70"}>Down</Text>
-            </Pressable>
-            {renamingId === category.id ? (
-              <Pressable onPress={() => renameCategory(category.id)}>
-                <Text className="text-cotto-accent">Save</Text>
+            <View className="ml-auto flex-row items-center gap-3">
+              <Pressable disabled={index === 0} onPress={() => moveCategory(category, -1)}>
+                <Text className={index === 0 ? "text-white/20" : "text-white/70"}>Up</Text>
               </Pressable>
-            ) : (
-              <Pressable
-                onPress={() => {
-                  setRenamingId(category.id);
-                  setRenameValue(category.name);
-                }}
-              >
-                <Text className="text-white/70">Rename</Text>
+              <Pressable disabled={index === (categoriesQuery.data?.length ?? 1) - 1} onPress={() => moveCategory(category, 1)}>
+                <Text className={index === (categoriesQuery.data?.length ?? 1) - 1 ? "text-white/20" : "text-white/70"}>Down</Text>
               </Pressable>
-            )}
-            <Pressable onPress={() => deleteCategory(category.id)}>
-              <Text className="text-red-400">Delete</Text>
-            </Pressable>
+              {renamingId === category.id ? (
+                <Pressable onPress={() => renameCategory(category.id)}>
+                  <Text className="text-cotto-accent">Save</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    setRenamingId(category.id);
+                    setRenameValue(category.name);
+                  }}
+                >
+                  <Text className="text-white/70">Rename</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => deleteCategory(category.id)}>
+                <Text className="text-red-400">Delete</Text>
+              </Pressable>
+            </View>
           </View>
 
           {itemsQuery.data
@@ -231,8 +233,8 @@ export default function MenuBuilder() {
                   onSave={(values) => saveEditedItem(item, values)}
                 />
               ) : (
-                <View key={item.id} className="flex-row items-center gap-2 rounded-md bg-white/5 p-2">
-                  <View className="flex-1">
+                <View key={item.id} className="flex-row flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-white/5 p-2">
+                  <View className="shrink grow basis-[110px]">
                     <Text className="text-white">{item.name}</Text>
                     <Text className="text-sm text-white/60">${(item.price_cents / 100).toFixed(2)}</Text>
                   </View>
@@ -241,18 +243,20 @@ export default function MenuBuilder() {
                       <Text className="text-xs text-red-400">Sold out</Text>
                     </View>
                   )}
-                  <Pressable onPress={() => toggleSoldOut(item)}>
-                    <Text className="text-white/70">{item.is_sold_out ? "Mark in stock" : "Mark sold out"}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => toggleAvailable(item)}>
-                    <Text className="text-white/70">{item.is_available ? "Hide" : "Show"}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => setEditingItem(item)}>
-                    <Text className="text-cotto-accent">Edit</Text>
-                  </Pressable>
-                  <Pressable onPress={() => deleteItem(item.id)}>
-                    <Text className="text-red-400">Delete</Text>
-                  </Pressable>
+                  <View className="ml-auto flex-row items-center gap-3">
+                    <Pressable onPress={() => toggleSoldOut(item)}>
+                      <Text className="text-white/70">{item.is_sold_out ? "Mark in stock" : "Mark sold out"}</Text>
+                    </Pressable>
+                    <Pressable onPress={() => toggleAvailable(item)}>
+                      <Text className="text-white/70">{item.is_available ? "Hide" : "Show"}</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setEditingItem(item)}>
+                      <Text className="text-cotto-accent">Edit</Text>
+                    </Pressable>
+                    <Pressable onPress={() => deleteItem(item.id)}>
+                      <Text className="text-red-400">Delete</Text>
+                    </Pressable>
+                  </View>
                 </View>
               )
             )}

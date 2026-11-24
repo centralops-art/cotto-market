@@ -118,7 +118,7 @@ export function AvailabilityStep({ defaultValue, onBack, onSubmit }: Props) {
           disabled={submitting}
           onPress={handleSubmit}
         >
-          {submitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Submit Application</Text>}
+          {submitting ? <ActivityIndicator color="#fff" /> : <Text className="text-center font-semibold text-white">Submit Application</Text>}
         </Pressable>
       </View>
     </View>
