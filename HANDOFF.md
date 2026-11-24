@@ -4493,9 +4493,10 @@ and the cook's preview show tappable pills under the tagline.
   `phone, email, website, description, city, state, zip, slug,
   preorder_hours, published_at, created_at, updated_at` from anon and
   authenticated. That breaks iOS 12 / vc 10.
-- **0070 must be applied to hosted before any build or dev client with this
-  code**, or Browse fails (missing column). Then regenerate `database.ts`
-  (edited by hand here).
+- **0070 applied to hosted 2026-11-23.** Regenerated types match
+  `database.ts`. Signed out over REST: the new column list, the iOS 12 / vc 10
+  list, search and the favorites embed return 200; street address and Stripe
+  id still refused. Saving links as a signed-in cook is not checked yet.
 
 **Gate test for this build** (both phones):
 1. On the iPhone 16 with its current settings: tab bar with all seven tabs;
