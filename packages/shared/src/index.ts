@@ -5,6 +5,7 @@ export * from "./auth";
 export * from "./vendor-onboarding";
 export * from "./delivery-onboarding";
 export * from "./storefront";
+export * from "./social-links";
 export * from "./pickup-slots";
 export * from "./legal";
 export type { Database } from "./types/database";
