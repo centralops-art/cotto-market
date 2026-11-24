@@ -16,6 +16,7 @@ import { PUBLIC_VENDOR_COLUMNS } from "../../../src/lib/vendor-columns";
 import { useAuth } from "../../../src/lib/auth-context";
 import { CartButton } from "../../../src/components/cart-button";
 import { ReviewList } from "../../../src/components/review-list";
+import { SocialLinksRow } from "../../../src/components/social-links-row";
 
 const DAY_LABELS: Record<string, string> = {
   monday: "Mon",
@@ -175,6 +176,7 @@ export default function VendorProfile() {
       <View className="gap-1 px-6 pt-4">
         <Text className="text-3xl font-bold text-white">{vendor.storefront_name}</Text>
         {vendor.tagline && <Text className="text-white/70">{vendor.tagline}</Text>}
+        <SocialLinksRow value={vendor.social_links} accent={accent} />
       </View>
 
       {isFiltered && (

@@ -1,9 +1,9 @@
 # Cotto Marketplace — Handoff (Phase 11 merged, Phase 12 in progress)
 
-Last updated: 2026-11-23. **Start at §47 (open items), then §44-§46 (kitchen
-privacy) and §45 (current store builds: iOS 12 / Android vc 10, gate-tested).**
-**Next: the founder has smaller issues to raise in a new chat. Ask for the
-list. Do not start bundled delivery (§40) until the founder says so; pose its
+Last updated: 2026-11-23. **Start at §48 (work in progress for the next
+build, Stripe test mode), then §47 (open items), §44-§46 (kitchen privacy)
+and §45 (current store builds: iOS 12 / Android vc 10, gate-tested).**
+**Do not start bundled delivery (§40) until the founder says so; pose its
 questions then.** For the Stripe Direct charges background see §39 and §41.
 Before that:
 §33 (iOS launch crash fix, build 8), §34 (keyboard fix), §35 (next build
@@ -4432,7 +4432,7 @@ customer on that order; the app needs the cook's account id for PaymentSheet.
 Check before hiding: cook screens use `my_vendor()` (fine); admin uses the
 service role (fine). Test signed in before and after.
 
-**B. Social media links (later).** New customer-facing fields for the
+**B. Social media links: built, see §48.** New customer-facing fields for the
 vendor's social accounts. New `vendors` columns need a column grant (§46)
 and adding to `PUBLIC_VENDOR_COLUMNS`.
 
@@ -4451,3 +4451,60 @@ the Expo SDK (57 now). Before April 2027: check which Expo SDK / EAS image
 provides Xcode 27, upgrade or set `build.production.ios.image`, then do a
 full device test on iOS, since a new SDK can change behavior. Aim for
 about February 2027, not the last week.
+
+---
+
+## 48. Next build's changes (2026-11-23; founder: stays on Stripe test mode)
+
+Founder's decisions: small fixes in one PR, database work in its own, Expo
+patches (§47 C) last in their own PR. §47 A stage 2 also hides city, state
+and ZIP from the public (confirmed).
+
+**A. Screens running off the right edge on the founder's iPhone 16** (branch
+`fix/ios-narrow-screen-layout`). The screenshot's padding works out to a
+320pt-wide screen (an iPhone 16 is normally 393pt), so Display Zoom is most
+likely set to Larger Text (Settings > Display & Brightness). Bold Text looks
+on too. React Native doesn't shrink row children by default, so a long name
+pushed the price or status off screen.
+- Tab labels: one line, sized from tab width (`src/lib/tab-label-size.ts`),
+  and they ignore the system text size.
+- Rows with a name plus a price, status or buttons now shrink or wrap
+  (delivery pool and history, cart, orders, kitchen, checkout, order and
+  delivery detail, item, storefront, menu editor, hours, theme, team,
+  reviews). **For new screens: in a `flex-row`, give the variable-length
+  side `flex-1` (or `shrink`), or the row `flex-wrap`. Check at 320pt.**
+- Dish photos are now the screen's width (were a fixed 384), the vendor
+  dashboard and the cottage food popup scroll, and the Browse search hint is
+  shorter.
+- Checked in a 320pt / 393pt browser mock-up of the main rows, not on a device.
+
+**B. Kitchen social media links + §47 A stage 2, app half** (branch
+`feat/kitchen-social-links`). Instagram, Facebook, TikTok, YouTube and X.
+Vendors type a username or profile link in Edit Storefront; the storefront
+and the cook's preview show tappable pills under the tagline.
+- `0070_vendor_social_links.sql`: `vendors.social_links` jsonb, readable by
+  everyone. **Security:** only profile links on the platform's own https
+  domain are accepted, enforced in the app (`packages/shared/src/social-links.ts`,
+  tested) and by a check constraint (tested in a throwaway Postgres). Keep
+  the two in step. Links are checked again before display.
+- `PUBLIC_VENDOR_COLUMNS` no longer requests phone, email, website,
+  description, city, state, zip, slug, preorder_hours or timestamps. Once
+  testers are on this build, lock those columns: revoke SELECT on
+  `phone, email, website, description, city, state, zip, slug,
+  preorder_hours, published_at, created_at, updated_at` from anon and
+  authenticated. That breaks iOS 12 / vc 10.
+- **0070 must be applied to hosted before any build or dev client with this
+  code**, or Browse fails (missing column). Then regenerate `database.ts`
+  (edited by hand here).
+
+**Gate test for this build** (both phones):
+1. On the iPhone 16 with its current settings: tab bar with all seven tabs;
+   Deliveries Available and History; cart; orders; checkout; menu editor;
+   Edit Storefront; a storefront and a dish.
+2. Social links: add each kind as a username and as a pasted link, a bad
+   link (shows an error), clear one; customer sees and opens them; kitchen
+   with none shows nothing.
+3. Browse, search, favorites and storefronts still load, signed in and as a guest.
+4. Carried over from §35: keyboard fix on the 11 screens; crash fallback +
+   Sentry event; empty states for a new vendor; account deletion blocked while
+   a vendor is draft / pending review.

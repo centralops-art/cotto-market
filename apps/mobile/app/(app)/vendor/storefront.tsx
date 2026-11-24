@@ -1,4 +1,4 @@
-import type { ServiceAddressInput, StorefrontBasicsInput, ThemePalette, LayoutStyle } from "@cotto/shared";
+import type { ServiceAddressInput, SocialLinks, StorefrontBasicsInput, ThemePalette, LayoutStyle } from "@cotto/shared";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useKeyboardAwareScroll } from "../../../src/lib/use-keyboard-aware-scroll";
@@ -6,6 +6,7 @@ import { useVendor } from "../../../src/lib/use-vendor";
 import { AddressSection } from "../../../src/features/storefront-editor/address-section";
 import { HeaderBasicsSection } from "../../../src/features/storefront-editor/header-basics-section";
 import { HoursSection } from "../../../src/features/storefront-editor/hours-section";
+import { SocialLinksSection } from "../../../src/features/storefront-editor/social-links-section";
 import { TeamMembersSection } from "../../../src/features/storefront-editor/team-members-section";
 import { ThemeLayoutSection } from "../../../src/features/storefront-editor/theme-layout-section";
 
@@ -44,6 +45,11 @@ export default function StorefrontEditor() {
             patchVendor({ storefront_name: values.storefrontName, tagline: values.tagline || null })
           }
           onHeaderImageUploaded={async (url: string) => patchVendor({ header_image_url: url })}
+        />
+
+        <SocialLinksSection
+          value={vendor.social_links}
+          onSave={async (links: SocialLinks) => patchVendor({ social_links: links })}
         />
 
         <HoursSection title="Hours" value={vendor.hours} onSave={async (hours) => patchVendor({ hours })} />

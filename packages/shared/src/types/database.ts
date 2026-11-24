@@ -1225,6 +1225,7 @@ export type Database = {
           search_tsv: unknown
           slug: string
           sms_opt_in: boolean
+          social_links: Json
           state: string | null
           status: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
@@ -1270,6 +1271,7 @@ export type Database = {
           search_tsv?: unknown
           slug: string
           sms_opt_in?: boolean
+          social_links?: Json
           state?: string | null
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string
@@ -1315,6 +1317,7 @@ export type Database = {
           search_tsv?: unknown
           slug?: string
           sms_opt_in?: boolean
+          social_links?: Json
           state?: string | null
           status?: Database["public"]["Enums"]["vendor_status"]
           storefront_name?: string
@@ -1477,6 +1480,7 @@ export type Database = {
           search_tsv: unknown
           slug: string
           sms_opt_in: boolean
+          social_links: Json
           state: string | null
           status: Database["public"]["Enums"]["vendor_status"]
           storefront_name: string

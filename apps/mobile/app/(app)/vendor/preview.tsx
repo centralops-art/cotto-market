@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useVendor } from "../../../src/lib/use-vendor";
+import { SocialLinksRow } from "../../../src/components/social-links-row";
 
 export default function StorefrontPreview() {
   const router = useRouter();
@@ -67,6 +68,7 @@ export default function StorefrontPreview() {
       <View className="gap-1 px-6 pt-4">
         <Text className="text-3xl font-bold text-white">{vendor.storefront_name}</Text>
         {vendor.tagline && <Text className="text-white/70">{vendor.tagline}</Text>}
+        <SocialLinksRow value={vendor.social_links} accent={accent} />
       </View>
 
       <View className={`mt-6 px-6 ${isGrid ? "flex-row flex-wrap gap-3" : "gap-3"}`}>
