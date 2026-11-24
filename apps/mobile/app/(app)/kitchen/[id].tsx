@@ -111,8 +111,8 @@ export default function KitchenSuborderDetail() {
       <View className="gap-2 rounded-lg bg-white/5 p-4">
         <Text className="font-semibold text-white">Items</Text>
         {items.map((item) => (
-          <View key={item.id} className="flex-row justify-between">
-            <Text className="text-white/80">
+          <View key={item.id} className="flex-row justify-between gap-3">
+            <Text className="flex-1 text-white/80">
               {item.quantity}x {item.name_snapshot}
             </Text>
             <Text className="text-white/60">${((item.unit_price_cents * item.quantity) / 100).toFixed(2)}</Text>

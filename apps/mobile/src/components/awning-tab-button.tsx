@@ -13,6 +13,9 @@ type Props = BottomTabBarButtonProps & {
    * color at runtime. */
   cupColor: "red" | "cream";
   label: string;
+  /** Label size in points, the same for every visible tab -- see
+   * src/lib/tab-label-size.ts. */
+  labelSize: number;
   /** false hides the button (renders nothing, so the flex row closes the gap)
    * while leaving the route itself navigable -- expo-router won't let a
    * screen combine a custom tabBarButton with `href`, which is how this
@@ -32,6 +35,7 @@ type Props = BottomTabBarButtonProps & {
 export function AwningTabButton({
   cupColor,
   label,
+  labelSize,
   visible = true,
   accessibilityState,
   style,
@@ -52,7 +56,7 @@ export function AwningTabButton({
       accessibilityState={accessibilityState}
       accessibilityLabel={label}
       style={style}
-      className="flex-1 items-center justify-center bg-awning-brown px-0.5 py-1.5"
+      className="flex-1 items-center justify-center bg-awning-brown px-px py-1.5"
     >
       <View
         className={`h-full w-full items-center justify-center rounded-md ${isRed ? "bg-awning-red" : "bg-awning-cream"} ${
@@ -60,8 +64,16 @@ export function AwningTabButton({
         }`}
         style={isActive ? { borderColor: ACTIVE_ACCENT } : undefined}
       >
+        {/* One line always: labels can't wrap mid-word ("Brows/e"), and the
+            system text-size setting doesn't apply here, same as iOS's own tab
+            bars. adjustsFontSizeToFit covers the rest (e.g. iOS Bold Text). */}
         <Text
-          className={`text-center text-[10px] font-bold leading-tight ${isRed ? "text-awning-cream" : "text-awning-brown"} ${
+          numberOfLines={1}
+          allowFontScaling={false}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          style={{ fontSize: labelSize }}
+          className={`w-full text-center font-bold ${isRed ? "text-awning-cream" : "text-awning-brown"} ${
             isActive ? "" : "opacity-70"
           }`}
         >

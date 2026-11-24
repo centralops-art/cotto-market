@@ -169,18 +169,18 @@ export default function OrderTracking() {
           </Text>
           <View className="flex-row gap-2">
             <Pressable
-              className="flex-1 items-center rounded-lg bg-cotto-accent py-2 disabled:opacity-50"
+              className="flex-1 items-center justify-center rounded-lg bg-cotto-accent px-2 py-2 disabled:opacity-50"
               disabled={resolveOffer.isPending}
               onPress={() => confirmChoice("pickup")}
             >
-              <Text className="font-semibold text-white">Switch to pickup</Text>
+              <Text className="text-center font-semibold text-white">Switch to pickup</Text>
             </Pressable>
             <Pressable
-              className="flex-1 items-center rounded-lg border border-white/20 py-2 disabled:opacity-50"
+              className="flex-1 items-center justify-center rounded-lg border border-white/20 px-2 py-2 disabled:opacity-50"
               disabled={resolveOffer.isPending}
               onPress={() => confirmChoice("refund")}
             >
-              <Text className="font-semibold text-white">Get a refund</Text>
+              <Text className="text-center font-semibold text-white">Get a refund</Text>
             </Pressable>
           </View>
         </View>
@@ -197,7 +197,7 @@ export default function OrderTracking() {
             return (
               <View key={step} className="flex-row items-center gap-3">
                 <View className={`h-3 w-3 rounded-full ${reached ? "bg-cotto-accent" : "bg-white/20"}`} />
-                <Text className={reached ? "font-semibold text-white" : "text-white/40"}>{STEP_LABELS[step]}</Text>
+                <Text className={reached ? "flex-1 font-semibold text-white" : "flex-1 text-white/40"}>{STEP_LABELS[step]}</Text>
               </View>
             );
           })}
@@ -219,8 +219,8 @@ export default function OrderTracking() {
       <View className="gap-2 rounded-lg bg-white/5 p-4">
         <Text className="font-semibold text-white">Items</Text>
         {items.map((item) => (
-          <View key={item.id} className="flex-row justify-between">
-            <Text className="text-white/80">
+          <View key={item.id} className="flex-row justify-between gap-3">
+            <Text className="flex-1 text-white/80">
               {item.quantity}x {item.name_snapshot}
             </Text>
             <Text className="text-white/60">${((item.unit_price_cents * item.quantity) / 100).toFixed(2)}</Text>

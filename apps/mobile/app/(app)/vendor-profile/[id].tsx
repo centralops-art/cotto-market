@@ -152,11 +152,11 @@ export default function VendorProfile() {
 
   return (
     <ScrollView style={{ backgroundColor: primary }} contentContainerStyle={{ paddingBottom: 48 }}>
-      <View className="flex-row items-center justify-between px-6 pt-14">
+      <View className="flex-row items-center justify-between gap-3 px-6 pt-14">
         <Pressable onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
-        <View className="flex-row items-center gap-4">
+        <View className="shrink flex-row flex-wrap items-center justify-end gap-x-4 gap-y-1">
           <CartButton />
           <Pressable onPress={shareVendor}>
             <Text className="text-white/60">Share</Text>
@@ -180,8 +180,8 @@ export default function VendorProfile() {
       </View>
 
       {isFiltered && (
-        <View className="mx-6 mt-4 flex-row items-center justify-between rounded-md bg-white/10 px-3 py-2">
-          <Text className="text-sm text-white/70">Showing results for "{searchTerm}"</Text>
+        <View className="mx-6 mt-4 flex-row items-center justify-between gap-3 rounded-md bg-white/10 px-3 py-2">
+          <Text className="flex-1 text-sm text-white/70">Showing results for "{searchTerm}"</Text>
           <Pressable onPress={() => setShowFullMenu(true)}>
             <Text className="text-sm" style={{ color: accent }}>
               Show full menu
@@ -240,8 +240,8 @@ export default function VendorProfile() {
                       />
                     )}
                     <View className="flex-1">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="font-semibold text-white">{item.name}</Text>
+                      <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                        <Text className="shrink font-semibold text-white">{item.name}</Text>
                         {item.is_sold_out && (
                           <View className="rounded-full bg-red-500/30 px-2 py-0.5">
                             <Text className="text-xs text-red-200">Sold out</Text>

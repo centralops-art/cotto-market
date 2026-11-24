@@ -71,10 +71,10 @@ export default function Orders() {
               {suborders.map((so) => (
                 <Pressable
                   key={so.id}
-                  className="flex-row items-center justify-between rounded-md bg-white/5 p-3"
+                  className="flex-row items-center justify-between gap-3 rounded-md bg-white/5 p-3"
                   onPress={() => router.push({ pathname: "/(app)/order-tracking/[id]", params: { id: so.id } })}
                 >
-                  <View>
+                  <View className="flex-1">
                     <Text className="font-semibold text-white">{so.vendors?.storefront_name ?? "Vendor"}</Text>
                     <Text className="text-xs text-white/50">{so.fulfillment === "pickup" ? "Pickup" : "Delivery"}</Text>
                   </View>

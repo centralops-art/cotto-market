@@ -238,7 +238,7 @@ export default function Cart() {
       className="flex-1 bg-cotto-dark"
       contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 96 + keyboard.keyboardHeight, gap: 20 }}
     >
-      <View className="flex-row items-center justify-between">
+      <View className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <Text className="text-2xl font-bold text-white">Cart</Text>
         {vendorGroups.length > 0 &&
           (confirmingClear ? (
@@ -275,9 +275,10 @@ export default function Cart() {
               {group.items.map((item) => {
                 const menuItem = item.menu_items as unknown as { name: string };
                 return (
-                  <View key={item.id} className="flex-row items-center justify-between">
-                    <Text className="flex-1 text-white">{menuItem.name}</Text>
-                    <View className="flex-row items-center gap-3">
+                  <View key={item.id} className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    {/* On a narrow screen the controls drop below the name instead of squeezing it. */}
+                    <Text className="shrink grow basis-[90px] text-white">{menuItem.name}</Text>
+                    <View className="ml-auto flex-row items-center gap-3">
                       <Pressable onPress={() => updateQuantity(item.id, item.quantity - 1)}>
                         <Text className="text-lg text-white/70">-</Text>
                       </Pressable>
@@ -313,7 +314,7 @@ export default function Cart() {
 
               {f.type === "pickup" ? (
                 <View className="gap-2">
-                  <View className="flex-row gap-2">
+                  <View className="flex-row flex-wrap gap-2">
                     {DAY_LABELS.map((label, i) => (
                       <Pressable
                         key={label}

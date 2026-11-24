@@ -71,7 +71,7 @@ export default function Browse() {
 
         <TextInput
           className="rounded-lg bg-white/10 px-4 py-3 text-white"
-          placeholder="Search vendors, dishes, ingredients..."
+          placeholder="Search vendor, dish, ingredient"
           placeholderTextColor="#9CA3AF"
           value={queryText}
           onChangeText={setQueryText}

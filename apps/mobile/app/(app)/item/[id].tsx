@@ -2,7 +2,7 @@ import { ALLERGEN_LABELS, type Allergen } from "@cotto/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { supabase } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/lib/auth-context";
 import { addToCart, useInvalidateCart, useOpenCart } from "../../../src/lib/use-cart";
@@ -14,6 +14,7 @@ export default function ItemDetail() {
   const router = useRouter();
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const { width: screenWidth } = useWindowDimensions();
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const cartQuery = useOpenCart();
@@ -117,11 +118,11 @@ export default function ItemDetail() {
 
   return (
     <ScrollView className="flex-1 bg-cotto-dark" contentContainerStyle={{ paddingBottom: 48 }}>
-      <View className="flex-row items-center justify-between px-6 pt-14">
+      <View className="flex-row items-center justify-between gap-3 px-6 pt-14">
         <Pressable onPress={() => router.back()}>
           <Text className="text-white/60">&larr; Back</Text>
         </Pressable>
-        <View className="flex-row items-center gap-4">
+        <View className="shrink flex-row flex-wrap items-center justify-end gap-x-4 gap-y-1">
           <CartButton />
           <Pressable disabled={!profile || toggleFavorite.isPending} onPress={() => toggleFavorite.mutate()}>
             <Text className={favoriteQuery.data ? "text-cotto-accent" : "text-white/60"}>
@@ -134,14 +135,14 @@ export default function ItemDetail() {
       {item.image_urls.length > 0 && (
         <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} className="mt-4">
           {item.image_urls.map((url) => (
-            <Image key={url} source={{ uri: url }} className="h-64 w-96" resizeMode="cover" />
+            <Image key={url} source={{ uri: url }} className="h-64" style={{ width: screenWidth }} resizeMode="cover" />
           ))}
         </ScrollView>
       )}
 
       <View className="gap-2 px-6 pt-4">
         <View className="flex-row items-center gap-2">
-          <Text className="text-2xl font-bold text-white">{item.name}</Text>
+          <Text className="shrink text-2xl font-bold text-white">{item.name}</Text>
           {item.is_sold_out && (
             <View className="rounded-full bg-red-500/30 px-2 py-0.5">
               <Text className="text-xs text-red-200">Sold out</Text>

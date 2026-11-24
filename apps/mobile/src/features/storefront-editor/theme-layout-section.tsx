@@ -89,7 +89,7 @@ export function ThemeLayoutSection({ themePalette, layoutStyle, onSaveTheme, onS
           </Pressable>
         ))}
       </View>
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row flex-wrap items-center gap-2">
         <Text className="text-white/70">Custom accent</Text>
         <TextInput
           className="w-28 rounded-md bg-white/10 px-2 py-1 text-white"

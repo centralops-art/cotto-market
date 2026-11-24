@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ActivityIndicator, Modal, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { supabase } from "../lib/supabase";
 
 const SEEN_KEY = "cottage_food_disclaimer_seen";
@@ -43,12 +43,14 @@ export function CottageFoodDisclaimerModal({ visible, onDismiss }: { visible: bo
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <View className="flex-1 items-center justify-center bg-black/70 p-6">
-        <View className="w-full max-w-sm gap-4 rounded-xl bg-cotto-dark p-5">
+        <View className="max-h-full w-full max-w-sm gap-4 rounded-xl bg-cotto-dark p-5">
           <Text className="text-xl font-bold text-white">Cottage food disclaimer</Text>
           {settingsQuery.isLoading ? (
             <ActivityIndicator color="#D96A3E" />
           ) : (
-            <Text className="text-white/80">{settingsQuery.data}</Text>
+            <ScrollView style={{ flexGrow: 0 }}>
+              <Text className="text-white/80">{settingsQuery.data}</Text>
+            </ScrollView>
           )}
           <Pressable className="items-center rounded-lg bg-cotto-accent py-3" onPress={onDismiss}>
             <Text className="font-semibold text-white">Got it</Text>

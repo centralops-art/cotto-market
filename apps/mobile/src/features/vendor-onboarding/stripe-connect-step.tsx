@@ -44,7 +44,7 @@ export function StripeConnectStep({ vendorId, onSubmit, onBack }: Props) {
           disabled={submitting || !ready}
           onPress={submitApplication}
         >
-          {submitting ? <ActivityIndicator color="#fff" /> : <Text className="font-semibold text-white">Submit Application</Text>}
+          {submitting ? <ActivityIndicator color="#fff" /> : <Text className="text-center font-semibold text-white">Submit Application</Text>}
         </Pressable>
       </View>
     </View>
